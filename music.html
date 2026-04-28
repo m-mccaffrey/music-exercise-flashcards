@@ -1164,11 +1164,36 @@
 
                     break;
 
-                case 'pivot-arpeggios':
+                case 'pivot-arpeggios': {
 
-                    patternNotes = generatePivotArpeggios(scaleNotes);
+                    // Forward:  ascending 7th arpeggio per degree  (1-3-5-7)
+                    // Backward: descending from root through chord tones below (1-7-5-3)
 
-                    break;
+                    const len = scaleNotes.length;
+
+                    const asc = [], desc = [];
+
+                    for (let i = 0; i < len; i++) {
+
+                        asc.push(scaleNotes[i], scaleNotes[(i+2)%len], scaleNotes[(i+4)%len], scaleNotes[(i+6)%len]);
+
+                        desc.push(scaleNotes[i], scaleNotes[(i+len-1)%len], scaleNotes[(i+len-3)%len], scaleNotes[(i+len-5)%len]);
+
+                    }
+
+                    let r;
+
+                    if (direction === 'forward-backward' || direction === 'forward-backward-alt') r = [...asc, ...desc];
+
+                    else if (direction === 'backward-forward' || direction === 'backward-forward-alt') r = [...desc, ...asc];
+
+                    else if (direction === 'backward') r = desc;
+
+                    else r = asc;
+
+                    return progression === 'down' ? r.slice().reverse() : r;
+
+                }
 
                 default:
 
@@ -1346,17 +1371,17 @@
 
             const arpeggios = [];
 
-            for (let i = 0; i < scaleNotes.length; i++) {
+            const len = scaleNotes.length;
+
+            for (let i = 0; i < len; i++) {
 
                 arpeggios.push(scaleNotes[i]);
 
-                arpeggios.push(scaleNotes[(i + 2) % scaleNotes.length]);
+                arpeggios.push(scaleNotes[(i + 2) % len]);
 
-                arpeggios.push(scaleNotes[(i + 4) % scaleNotes.length]);
+                arpeggios.push(scaleNotes[(i + 4) % len]);
 
-                arpeggios.push(scaleNotes[(i + 2) % scaleNotes.length]); // Pivot back
-
-                arpeggios.push(scaleNotes[i]); // Return to root
+                arpeggios.push(scaleNotes[(i + 6) % len]);
 
             }
 
@@ -1458,7 +1483,7 @@
 
             container.innerHTML = '<div id="' + vexId + '"></div>';
 
-            const NOTES_PER_MEASURE = 4;
+            const NOTES_PER_MEASURE = 8;
 
             const chunks = [];
 
@@ -1471,8 +1496,8 @@
             // Layout constants
             const X_START = 10;
             const Y_START = 40;
-            const FIRST_W = 210;  // wider for clef + time sig
-            const MEASURE_W = 150;
+            const FIRST_W = 260;  // wider for clef + time sig
+            const MEASURE_W = 210;
             const MEASURES_PER_LINE = 4;
             const LINE_H = 100;
 
@@ -1505,13 +1530,13 @@
 
                     const system = vf.System({ x, y, width: w });
 
-                    let noteStr = chunk.map(n => n.name + n.octave + '/q').join(', ');
+                    let noteStr = chunk.map(n => n.name + n.octave + '/8').join(', ');
 
                     const need = NOTES_PER_MEASURE - chunk.length;
 
                     if (need > 0) {
 
-                        noteStr += (noteStr ? ', ' : '') + Array(need).fill('B4/q/r').join(', ');
+                        noteStr += (noteStr ? ', ' : '') + Array(need).fill('B4/8/r').join(', ');
 
                     }
 
@@ -1601,7 +1626,7 @@
 
             try {
 
-                // Test 1: 4 notes (one measure)
+                // Test 1: 4 notes (partial measure, 4 rests needed)
 
                 container.innerHTML = '';
 
@@ -1617,7 +1642,7 @@
 
 
 
-                // Test 2: 8 notes (two measures)
+                // Test 2: 8 notes (one full measure)
 
                 container.innerHTML = '';
 
@@ -1633,7 +1658,7 @@
 
 
 
-                // Test 3: 24 notes (six measures)
+                // Test 3: 24 notes (three full measures)
 
                 container.innerHTML = '';
 
