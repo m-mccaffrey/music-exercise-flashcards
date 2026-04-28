@@ -1048,6 +1048,42 @@
 
 
 
+        // Build a linear (multi-octave) scale as {name,octave}[] starting at startOctave.
+        // numPasses copies of the scale are appended, octave incrementing at each C (or
+        // wherever the chromatic index wraps downward).
+
+        function buildLinearScale(scaleNotes, startOctave, numPasses) {
+
+            const result = [];
+
+            let octave = startOctave;
+
+            for (let pass = 0; pass < numPasses; pass++) {
+
+                for (let j = 0; j < scaleNotes.length; j++) {
+
+                    if (result.length > 0) {
+
+                        const prevChrom = getNoteIndex(result[result.length - 1].name);
+
+                        const curChrom  = getNoteIndex(scaleNotes[j]);
+
+                        if (curChrom <= prevChrom) octave++;
+
+                    }
+
+                    result.push({ name: scaleNotes[j], octave });
+
+                }
+
+            }
+
+            return result;
+
+        }
+
+
+
         // Generate scale notes for a given key and scale
 
         function generateScale(key, scaleType) {
@@ -1166,41 +1202,16 @@
 
                 case 'pivot-arpeggios': {
 
-                    // Build a 2-octave linear scale with explicit octave info so the
-                    // large leaps (octave-jump-down in forward, 7th-jump-up in backward)
-                    // are assigned correctly without nearest-neighbour interference.
+                    // Uses a linear scale so large leaps are octave-assigned correctly.
+                    // forward : [i+len, i+2, i+4, i+6]  → octave-root, 3rd, 5th, 7th
+                    // backward: [i, i+len-1, i+len-3, i+len-5] → root, 7th-above, 5th, 3rd
+                    // alternating: even degrees use forward-pivot, odd degrees use backward-pivot
 
                     const len = scaleNotes.length;
 
-                    const linear = [];
+                    const linear = buildLinearScale(scaleNotes, 4, 3);
 
-                    let oct = 4;
-
-                    for (let pass = 0; pass < 3; pass++) {
-
-                        for (let j = 0; j < len; j++) {
-
-                            if (linear.length > 0) {
-
-                                const prevChrom = getNoteIndex(linear[linear.length - 1].name);
-
-                                const curChrom  = getNoteIndex(scaleNotes[j]);
-
-                                if (curChrom <= prevChrom) oct++;
-
-                            }
-
-                            linear.push({ name: scaleNotes[j], octave: oct });
-
-                        }
-
-                    }
-
-                    // forward : [i+len, i+2, i+4, i+6]  → octave-root, 3rd, 5th, 7th
-
-                    // backward: [i,     i+6, i+4, i+2]  → root, 7th-above, 5th, 3rd
-
-                    const asc = [], desc = [];
+                    const asc = [], desc = [], alt = [];
 
                     for (let i = 0; i < len; i++) {
 
@@ -1210,11 +1221,29 @@
 
                     }
 
+                    for (let i = 0; i < len; i += 2) {
+
+                        alt.push(linear[i + len], linear[i + 2], linear[i + 4], linear[i + 6]);
+
+                        if (i + 1 < len) {
+
+                            const j = i + 1;
+
+                            alt.push(linear[j], linear[j + len - 1], linear[j + len - 3], linear[j + len - 5]);
+
+                        }
+
+                    }
+
                     let r;
 
-                    if (direction === 'forward-backward' || direction === 'forward-backward-alt') r = [...asc, ...desc];
+                    if (direction === 'forward-backward-alt') r = alt;
 
-                    else if (direction === 'backward-forward' || direction === 'backward-forward-alt') r = [...desc, ...asc];
+                    else if (direction === 'backward-forward-alt') r = alt.slice().reverse();
+
+                    else if (direction === 'forward-backward') r = [...asc, ...desc];
+
+                    else if (direction === 'backward-forward') r = [...desc, ...asc];
 
                     else if (direction === 'backward') r = desc;
 
@@ -1232,19 +1261,52 @@
 
 
 
-            // Fwd/back alternating scale runs (e.g. CDE FED EFG AGF GAB CBA BCD EDC...)
-
             let result;
 
             if (direction === 'forward-backward-alt' || direction === 'backward-forward-alt') {
 
-                const groupSize = pattern === '3-note' ? 3 : pattern === '4-note' ? 4 : pattern === '6-note' ? 6 : 3;
+                if (pattern === 'chords' || pattern === 'arpeggios') {
 
-                result = generateFwdBackAlternatingRuns(scaleNotes, groupSize);
+                    // Skip-one alternating: even-indexed degrees use ascending form,
+                    // odd-indexed degrees use descending form, stepping by 2 per pair.
+                    // chords   fwd [i,i+2,i+4,i+6]  bwd [i+7, i+5, i+3, i+1]
+                    // arpeggios fwd [i,i+2,i+4,i+len] bwd [i+len+1, i+5, i+3, i+1]
 
-                if (direction === 'backward-forward-alt') {
+                    const linear = buildLinearScale(scaleNotes, 4, 3);
 
-                    result = result.slice().reverse();
+                    const len = scaleNotes.length;
+
+                    const alt = [];
+
+                    for (let i = 0; i < len; i += 2) {
+
+                        if (pattern === 'chords') {
+
+                            alt.push(linear[i], linear[i+2], linear[i+4], linear[i+6]);
+
+                            alt.push(linear[i+7], linear[i+5], linear[i+3], linear[i+1]);
+
+                        } else {
+
+                            alt.push(linear[i], linear[i+2], linear[i+4], linear[i+len]);
+
+                            alt.push(linear[i+len+1], linear[i+5], linear[i+3], linear[i+1]);
+
+                        }
+
+                    }
+
+                    result = direction === 'backward-forward-alt' ? alt.slice().reverse() : alt;
+
+                } else {
+
+                    // Scale runs (3-note, 4-note, 6-note) and other patterns use consecutive alternating runs
+
+                    const groupSize = pattern === '4-note' ? 4 : pattern === '6-note' ? 6 : 3;
+
+                    result = generateFwdBackAlternatingRuns(scaleNotes, groupSize);
+
+                    if (direction === 'backward-forward-alt') result = result.slice().reverse();
 
                 }
 
@@ -1364,33 +1426,45 @@
 
 
 
+        // Chords: diatonic 7th chords — root, 3rd, 5th, 7th  (1-3-5-7)
+
         function generateChords(scaleNotes) {
 
-            // Similar to triads but can be extended
+            const linear = buildLinearScale(scaleNotes, 4, 3);
 
-            return generateTriads(scaleNotes);
+            const len = scaleNotes.length;
+
+            const result = [];
+
+            for (let i = 0; i < len; i++) {
+
+                result.push(linear[i], linear[i + 2], linear[i + 4], linear[i + 6]);
+
+            }
+
+            return result;
 
         }
 
 
 
+        // Arpeggios: triad + octave — root, 3rd, 5th, octave  (1-3-5-8)
+
         function generateArpeggios(scaleNotes) {
 
-            const arpeggios = [];
+            const linear = buildLinearScale(scaleNotes, 4, 3);
 
-            for (let i = 0; i < scaleNotes.length; i++) {
+            const len = scaleNotes.length;
 
-                arpeggios.push(scaleNotes[i]);
+            const result = [];
 
-                arpeggios.push(scaleNotes[(i + 2) % scaleNotes.length]);
+            for (let i = 0; i < len; i++) {
 
-                arpeggios.push(scaleNotes[(i + 4) % scaleNotes.length]);
-
-                arpeggios.push(scaleNotes[(i + 6) % scaleNotes.length]);
+                result.push(linear[i], linear[i + 2], linear[i + 4], linear[i + len]);
 
             }
 
-            return arpeggios;
+            return result;
 
         }
 
