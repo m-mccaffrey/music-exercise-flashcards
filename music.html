@@ -988,7 +988,9 @@
 
 
 
-        // Assign octaves to a sequence of note names (2 octaves, root at 4)
+        // Assign octaves to a sequence of note names using nearest-neighbor MIDI distance.
+        // For each note, pick the octave (within [3,6]) that minimises the semitone
+        // interval from the previous note, so any melodic interval works correctly.
 
         function assignOctavesToSequence(noteNames, rootKey) {
 
@@ -998,25 +1000,35 @@
 
             let octave = 4;
 
-            let prevIdx = getNoteIndex(noteNames[0]);
-
             for (let i = 0; i < noteNames.length; i++) {
 
-                const idx = getNoteIndex(noteNames[i]);
+                if (i === 0) {
 
-                if (i > 0) {
+                    out.push({ name: noteNames[i], octave });
 
-                    if (prevIdx > idx && prevIdx - idx >= 7) octave++;  // wrapped 11->0 up
+                } else {
 
-                    if (idx > prevIdx && idx - prevIdx >= 7) octave--;  // wrapped 0->11 down
+                    const prevMidi = toMidi(out[i - 1].name, out[i - 1].octave);
+
+                    let bestOctave = octave;
+
+                    let bestDist = Infinity;
+
+                    for (const cand of [octave - 1, octave, octave + 1]) {
+
+                        if (cand < 3 || cand > 6) continue;
+
+                        const dist = Math.abs(toMidi(noteNames[i], cand) - prevMidi);
+
+                        if (dist < bestDist) { bestDist = dist; bestOctave = cand; }
+
+                    }
+
+                    octave = bestOctave;
+
+                    out.push({ name: noteNames[i], octave });
 
                 }
-
-                octave = Math.max(3, Math.min(5, octave));
-
-                out.push({ name: noteNames[i], octave });
-
-                prevIdx = idx;
 
             }
 
@@ -1456,27 +1468,42 @@
 
             }
 
-            const numStaves = chunks.length;
+            // Layout constants
+            const X_START = 10;
+            const Y_START = 40;
+            const FIRST_W = 210;  // wider for clef + time sig
+            const MEASURE_W = 150;
+            const MEASURES_PER_LINE = 4;
+            const LINE_H = 100;
 
-            const width = Math.max(500, notes.length * 22 + 80);
-
-            const height = Math.max(140, 80 + numStaves * 55);
-
-
+            const numLines = Math.ceil(chunks.length / MEASURES_PER_LINE);
+            const measuresOnFirstLine = Math.min(chunks.length, MEASURES_PER_LINE);
+            const totalWidth = X_START + FIRST_W + (measuresOnFirstLine - 1) * MEASURE_W + X_START;
+            const totalHeight = Y_START + numLines * LINE_H + 20;
 
             try {
 
                 const { Factory } = VF;
 
-                const vf = new Factory({ renderer: { elementId: vexId, width: width, height: height } });
+                const vf = new Factory({ renderer: { elementId: vexId, width: Math.max(500, totalWidth), height: totalHeight } });
 
                 const score = vf.EasyScore();
 
-                // One system per measure so the formatter never sees "too many ticks" across staves
+                chunks.forEach((chunk, chunkIdx) => {
 
-                chunks.forEach((chunk) => {
+                    const lineNum = Math.floor(chunkIdx / MEASURES_PER_LINE);
 
-                    const system = vf.System();
+                    const posInLine = chunkIdx % MEASURES_PER_LINE;
+
+                    const isFirstInLine = posInLine === 0;
+
+                    const x = X_START + (isFirstInLine ? 0 : FIRST_W + (posInLine - 1) * MEASURE_W);
+
+                    const y = Y_START + lineNum * LINE_H;
+
+                    const w = isFirstInLine ? FIRST_W : MEASURE_W;
+
+                    const system = vf.System({ x, y, width: w });
 
                     let noteStr = chunk.map(n => n.name + n.octave + '/q').join(', ');
 
@@ -1492,9 +1519,11 @@
 
                     const stave = system.addStave({ voices: [voice] });
 
-                    stave.addClef('treble');
+                    if (isFirstInLine) {
 
-                    stave.addTimeSignature('4/4');
+                        stave.addClef('treble').addTimeSignature('4/4');
+
+                    }
 
                 });
 
