@@ -670,10 +670,6 @@
 
                     <option value="backward">Backward</option>
 
-                    <option value="forward-backward">Forward + Backward</option>
-
-                    <option value="backward-forward">Backward + Forward</option>
-
                     <option value="forward-backward-alt">Forward + Backward Alternating</option>
 
                     <option value="backward-forward-alt">Backward + Forward Alternating</option>
@@ -1241,10 +1237,6 @@
 
                     else if (direction === 'backward-forward-alt') r = alt.slice().reverse();
 
-                    else if (direction === 'forward-backward') r = [...asc, ...desc];
-
-                    else if (direction === 'backward-forward') r = [...desc, ...asc];
-
                     else if (direction === 'backward') r = desc;
 
                     else r = asc;
@@ -1500,19 +1492,11 @@
 
                 case 'forward':
 
-                    return notes;
+                    return notes.slice().reverse();
 
                 case 'backward':
 
-                    return notes.slice().reverse();
-
-                case 'forward-backward':
-
-                    return [...notes, ...notes.slice().reverse()];
-
-                case 'backward-forward':
-
-                    return [...notes.slice().reverse(), ...notes];
+                    return notes;
 
                 case 'forward-backward-alt':
 
@@ -2090,7 +2074,7 @@
 
             const positions = [1, 2, 3];
 
-            const directions = ['forward', 'backward', 'forward-backward', 'backward-forward', 'forward-backward-alt', 'backward-forward-alt'];
+            const directions = ['forward', 'backward', 'forward-backward-alt', 'backward-forward-alt'];
 
             const progressions = ['up', 'down'];
 
