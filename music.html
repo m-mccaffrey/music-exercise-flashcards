@@ -1166,18 +1166,47 @@
 
                 case 'pivot-arpeggios': {
 
-                    // Forward:  ascending 7th arpeggio per degree  (1-3-5-7)
-                    // Backward: descending from root through chord tones below (1-7-5-3)
+                    // Build a 2-octave linear scale with explicit octave info so the
+                    // large leaps (octave-jump-down in forward, 7th-jump-up in backward)
+                    // are assigned correctly without nearest-neighbour interference.
 
                     const len = scaleNotes.length;
+
+                    const linear = [];
+
+                    let oct = 4;
+
+                    for (let pass = 0; pass < 3; pass++) {
+
+                        for (let j = 0; j < len; j++) {
+
+                            if (linear.length > 0) {
+
+                                const prevChrom = getNoteIndex(linear[linear.length - 1].name);
+
+                                const curChrom  = getNoteIndex(scaleNotes[j]);
+
+                                if (curChrom <= prevChrom) oct++;
+
+                            }
+
+                            linear.push({ name: scaleNotes[j], octave: oct });
+
+                        }
+
+                    }
+
+                    // forward : [i+len, i+2, i+4, i+6]  → octave-root, 3rd, 5th, 7th
+
+                    // backward: [i,     i+6, i+4, i+2]  → root, 7th-above, 5th, 3rd
 
                     const asc = [], desc = [];
 
                     for (let i = 0; i < len; i++) {
 
-                        asc.push(scaleNotes[i], scaleNotes[(i+2)%len], scaleNotes[(i+4)%len], scaleNotes[(i+6)%len]);
+                        asc.push(linear[i + len], linear[i + 2], linear[i + 4], linear[i + 6]);
 
-                        desc.push(scaleNotes[i], scaleNotes[(i+len-1)%len], scaleNotes[(i+len-3)%len], scaleNotes[(i+len-5)%len]);
+                        desc.push(linear[i], linear[i + len - 1], linear[i + len - 3], linear[i + len - 5]);
 
                     }
 
@@ -1459,11 +1488,16 @@
 
 
 
-        // Render exercise with VexFlow (treble staff, 2 octaves). One stave per measure (4/4) to avoid "too many ticks".
+        // Render exercise with VexFlow. Accepts string[] (note names) or {name,octave}[]
+        // (pivot arpeggios pass the latter to avoid nearest-neighbour octave errors).
 
-        function renderNotation(container, noteNames, rootKey) {
+        function renderNotation(container, noteInput, rootKey) {
 
-            const notes = assignOctavesToSequence(noteNames, rootKey);
+            const notes = (noteInput.length > 0 && typeof noteInput[0] === 'object')
+
+                ? noteInput
+
+                : assignOctavesToSequence(noteInput, rootKey);
 
             if (notes.length === 0) return;
 
@@ -1496,7 +1530,7 @@
             // Layout constants
             const X_START = 10;
             const Y_START = 40;
-            const FIRST_W = 260;  // wider for clef + time sig
+            const FIRST_W = 260;
             const MEASURE_W = 210;
             const MEASURES_PER_LINE = 4;
             const LINE_H = 100;
@@ -1508,11 +1542,13 @@
 
             try {
 
-                const { Factory } = VF;
+                const { Factory, Beam } = VF;
 
                 const vf = new Factory({ renderer: { elementId: vexId, width: Math.max(500, totalWidth), height: totalHeight } });
 
                 const score = vf.EasyScore();
+
+                const allBeams = [];
 
                 chunks.forEach((chunk, chunkIdx) => {
 
@@ -1540,7 +1576,9 @@
 
                     }
 
-                    const voice = score.voice(score.notes(noteStr, { stem: 'auto' }), { time: '4/4' });
+                    const staveNotes = score.notes(noteStr, { stem: 'auto' });
+
+                    const voice = score.voice(staveNotes, { time: '4/4' });
 
                     const stave = system.addStave({ voices: [voice] });
 
@@ -1550,9 +1588,21 @@
 
                     }
 
+                    // Beam eighth notes in groups of 4 (one beat per beam in 4/4)
+                    if (Beam) {
+
+                        Beam.generateBeams(staveNotes).forEach(b => allBeams.push(b));
+
+                    }
+
                 });
 
                 vf.draw();
+
+                // Beams must be drawn after vf.draw() has positioned the notes
+                const ctx = vf.getContext();
+
+                allBeams.forEach(b => b.setContext(ctx).draw());
 
             } catch (err) {
 
@@ -1924,9 +1974,15 @@
 
 
 
-            // Render fretboard
+            // Render fretboard — needs plain note names regardless of format
 
-            renderFretboard(key, scaleType, position, exerciseNotes);
+            const exerciseNoteNames = exerciseNotes.length > 0 && typeof exerciseNotes[0] === 'object'
+
+                ? exerciseNotes.map(n => n.name)
+
+                : exerciseNotes;
+
+            renderFretboard(key, scaleType, position, exerciseNoteNames);
 
         }
 
