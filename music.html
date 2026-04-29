@@ -1255,70 +1255,66 @@
 
             let result;
 
-            if (direction === 'forward-backward-alt' || direction === 'backward-forward-alt') {
+            // Handle all 8 combinations of direction × progression
+            switch (pattern) {
 
-                if (pattern === 'chords' || pattern === 'arpeggios') {
-
-                    // Skip-one alternating: even-indexed degrees use ascending form,
-                    // odd-indexed degrees use descending form, stepping by 2 per pair.
-                    // chords   fwd [i,i+2,i+4,i+6]  bwd [i+7, i+5, i+3, i+1]
-                    // arpeggios fwd [i,i+2,i+4,i+len] bwd [i+len+1, i+5, i+3, i+1]
-
-                    const linear = buildLinearScale(scaleNotes, 4, 3);
-
-                    const len = scaleNotes.length;
-
-                    const alt = [];
-
-                    for (let i = 0; i < len; i += 2) {
-
-                        if (pattern === 'chords') {
-
-                            alt.push(linear[i], linear[i+2], linear[i+4], linear[i+6]);
-
-                            alt.push(linear[i+7], linear[i+5], linear[i+3], linear[i+1]);
-
-                        } else {
-
-                            alt.push(linear[i], linear[i+2], linear[i+4], linear[i+len]);
-
-                            alt.push(linear[i+len+1], linear[i+5], linear[i+3], linear[i+1]);
-
-                        }
-
-                    }
-
-                    result = direction === 'backward-forward-alt' ? alt.slice().reverse() : alt;
-
-                } else {
-
-                    // Scale runs (3-note, 4-note, 6-note) and other patterns use consecutive alternating runs
+                case '3-note':
+                case '4-note':
+                case '6-note': {
 
                     const groupSize = pattern === '4-note' ? 4 : pattern === '6-note' ? 6 : 3;
 
-                    result = generateFwdBackAlternatingRuns(scaleNotes, groupSize);
+                    result = generateScaleRunCells(scaleNotes, groupSize, direction, progression);
 
-                    if (direction === 'backward-forward-alt') result = result.slice().reverse();
+                    break;
 
                 }
 
-            } else {
+                case 'triads': {
 
-                result = applyDirection(patternNotes, direction);
+                    result = generateTriadCells(scaleNotes, direction, progression);
+
+                    break;
+
+                }
+
+                case 'thirds': {
+
+                    result = generateThirdCells(scaleNotes, direction, progression);
+
+                    break;
+
+                }
+
+                case 'chords': {
+
+                    result = generateChordCells(scaleNotes, direction, progression);
+
+                    break;
+
+                }
+
+                case 'arpeggios': {
+
+                    result = generateArpeggioCells(scaleNotes, direction, progression);
+
+                    break;
+
+                }
+
+                case 'pivot-arpeggios': {
+
+                    result = generatePivotArpeggioCells(scaleNotes, direction, progression);
+
+                    break;
+
+                }
+
+                default:
+
+                    result = patternNotes;
 
             }
-
-
-
-            // Apply progression
-
-            if (progression === 'down') {
-
-                result = result.reverse();
-
-            }
-
-
 
             return result;
 
@@ -1369,6 +1365,462 @@
                 for (let k = groupSize; k >= 1; k--) {
 
                     result.push(extended[i + k]);
+
+                }
+
+            }
+
+            return result;
+
+        }
+
+
+
+        // ===== New cell-based generators (handle all 8 direction × progression combinations) =====
+
+        function generateScaleRunCells(scaleNotes, groupSize, direction, progression) {
+
+            const len = scaleNotes.length;
+
+            const extended = [...scaleNotes, ...scaleNotes, ...scaleNotes];
+
+            const result = [];
+
+            const isAlternating = direction === 'forward-backward-alt' || direction === 'backward-forward-alt';
+
+            const isForwardFirst = direction === 'forward-backward-alt';
+
+            const startIdx = progression === 'up' ? 0 : len - 1;
+
+            const step = progression === 'up' ? 1 : -1;
+
+
+
+            if (isAlternating) {
+
+                for (let i = 0; i < len; i++) {
+
+                    const idx = (startIdx + i * step + len * 100) % len;
+
+                    if ((isForwardFirst && i % 2 === 0) || (!isForwardFirst && i % 2 === 1)) {
+
+                        // Forward cell: ascending
+                        for (let k = 0; k < groupSize; k++) {
+
+                            result.push(extended[idx + k]);
+
+                        }
+
+                    } else {
+
+                        // Backward cell: descending from idx+groupSize-1 down to idx
+                        for (let k = groupSize - 1; k >= 0; k--) {
+
+                            result.push(extended[idx + k]);
+
+                        }
+
+                    }
+
+                }
+
+            } else {
+
+                const isBackward = direction === 'backward';
+
+                for (let i = 0; i < len; i++) {
+
+                    const idx = (startIdx + i * step + len * 100) % len;
+
+
+
+                    if (isBackward) {
+
+                        // Backward cell: descending from idx+groupSize-1 down to idx
+                        for (let k = groupSize - 1; k >= 0; k--) {
+
+                            result.push(extended[idx + k]);
+
+                        }
+
+                    } else {
+
+                        // Forward cell: ascending
+                        for (let k = 0; k < groupSize; k++) {
+
+                            result.push(extended[idx + k]);
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+            return result;
+
+        }
+
+
+
+        function generateThirdCells(scaleNotes, direction, progression) {
+
+            const len = scaleNotes.length;
+
+            const result = [];
+
+            const isAlternating = direction === 'forward-backward-alt' || direction === 'backward-forward-alt';
+
+            const isForwardFirst = direction === 'forward-backward-alt';
+
+            const startIdx = progression === 'up' ? 0 : len - 1;
+
+            const step = progression === 'up' ? 1 : -1;
+
+
+
+            if (isAlternating) {
+
+                for (let i = 0; i < len; i++) {
+
+                    const cellType = (isForwardFirst && i % 2 === 0) || (!isForwardFirst && i % 2 === 1) ? 'fwd' : 'bwd';
+
+                    const idx = (startIdx + i * step + len * 100) % len;
+
+
+
+                    result.push(scaleNotes[idx]);
+
+                    if (cellType === 'fwd') {
+
+                        result.push(scaleNotes[(idx + 2) % len]);
+
+                    } else {
+
+                        result.push(scaleNotes[(idx - 2 + len) % len]);
+
+                    }
+
+                }
+
+            } else {
+
+                const isBackward = direction === 'backward';
+
+                for (let i = 0; i < len; i++) {
+
+                    const idx = (startIdx + i * step + len * 100) % len;
+
+
+
+                    result.push(scaleNotes[idx]);
+
+                    if (isBackward) {
+
+                        result.push(scaleNotes[(idx - 2 + len) % len]);
+
+                    } else {
+
+                        result.push(scaleNotes[(idx + 2) % len]);
+
+                    }
+
+                }
+
+            }
+
+            return result;
+
+        }
+
+
+
+        function generateTriadCells(scaleNotes, direction, progression) {
+
+            const linear = buildLinearScale(scaleNotes, 4, 2);
+
+            const len = scaleNotes.length;
+
+            const result = [];
+
+            const isAlternating = direction === 'forward-backward-alt' || direction === 'backward-forward-alt';
+
+            const isForwardFirst = direction === 'forward-backward-alt';
+
+            const startIdx = progression === 'up' ? 0 : len - 1;
+
+            const step = progression === 'up' ? 1 : -1;
+
+
+
+            if (isAlternating) {
+
+                for (let i = 0; i < len; i++) {
+
+                    const cellType = (isForwardFirst && i % 2 === 0) || (!isForwardFirst && i % 2 === 1) ? 'fwd' : 'bwd';
+
+                    const idx = (startIdx + i * step + len * 100) % len;
+
+
+
+                    if (cellType === 'fwd') {
+
+                        result.push(linear[idx]);
+
+                        result.push(linear[idx + 2]);
+
+                        result.push(linear[idx + 4]);
+
+                    } else {
+
+                        result.push(linear[idx + 4]);
+
+                        result.push(linear[idx + 2]);
+
+                        result.push(linear[idx]);
+
+                    }
+
+                }
+
+            } else {
+
+                const isBackward = direction === 'backward';
+
+                for (let i = 0; i < len; i++) {
+
+                    const idx = (startIdx + i * step + len * 100) % len;
+
+
+
+                    if (isBackward) {
+
+                        result.push(linear[idx + 4]);
+
+                        result.push(linear[idx + 2]);
+
+                        result.push(linear[idx]);
+
+                    } else {
+
+                        result.push(linear[idx]);
+
+                        result.push(linear[idx + 2]);
+
+                        result.push(linear[idx + 4]);
+
+                    }
+
+                }
+
+            }
+
+            return result;
+
+        }
+
+
+
+        function generateChordCells(scaleNotes, direction, progression) {
+
+            const linear = buildLinearScale(scaleNotes, 4, 3);
+
+            const len = scaleNotes.length;
+
+            const result = [];
+
+            const isAlternating = direction === 'forward-backward-alt' || direction === 'backward-forward-alt';
+
+            const isForwardFirst = direction === 'forward-backward-alt';
+
+            const startIdx = progression === 'up' ? 0 : len - 1;
+
+            const step = progression === 'up' ? 1 : -1;
+
+
+
+            if (isAlternating) {
+
+                for (let i = 0; i < len; i++) {
+
+                    const cellType = (isForwardFirst && i % 2 === 0) || (!isForwardFirst && i % 2 === 1) ? 'fwd' : 'bwd';
+
+                    const idx = (startIdx + i * step + len * 100) % len;
+
+
+
+                    if (cellType === 'fwd') {
+
+                        result.push(linear[idx], linear[idx+2], linear[idx+4], linear[idx+6]);
+
+                    } else {
+
+                        result.push(linear[idx+7], linear[idx+5], linear[idx+3], linear[idx+1]);
+
+                    }
+
+                }
+
+            } else {
+
+                const isBackward = direction === 'backward';
+
+                for (let i = 0; i < len; i++) {
+
+                    const idx = (startIdx + i * step + len * 100) % len;
+
+
+
+                    if (isBackward) {
+
+                        result.push(linear[idx+7], linear[idx+5], linear[idx+3], linear[idx+1]);
+
+                    } else {
+
+                        result.push(linear[idx], linear[idx+2], linear[idx+4], linear[idx+6]);
+
+                    }
+
+                }
+
+            }
+
+            return result;
+
+        }
+
+
+
+        function generateArpeggioCells(scaleNotes, direction, progression) {
+
+            const linear = buildLinearScale(scaleNotes, 4, 3);
+
+            const len = scaleNotes.length;
+
+            const result = [];
+
+            const isAlternating = direction === 'forward-backward-alt' || direction === 'backward-forward-alt';
+
+            const isForwardFirst = direction === 'forward-backward-alt';
+
+            const startIdx = progression === 'up' ? 0 : len - 1;
+
+            const step = progression === 'up' ? 1 : -1;
+
+
+
+            if (isAlternating) {
+
+                for (let i = 0; i < len; i++) {
+
+                    const cellType = (isForwardFirst && i % 2 === 0) || (!isForwardFirst && i % 2 === 1) ? 'fwd' : 'bwd';
+
+                    const idx = (startIdx + i * step + len * 100) % len;
+
+
+
+                    if (cellType === 'fwd') {
+
+                        result.push(linear[idx], linear[idx+2], linear[idx+4], linear[idx+len]);
+
+                    } else {
+
+                        result.push(linear[idx+len+1], linear[idx+5], linear[idx+3], linear[idx+1]);
+
+                    }
+
+                }
+
+            } else {
+
+                const isBackward = direction === 'backward';
+
+                for (let i = 0; i < len; i++) {
+
+                    const idx = (startIdx + i * step + len * 100) % len;
+
+
+
+                    if (isBackward) {
+
+                        result.push(linear[idx+len+1], linear[idx+5], linear[idx+3], linear[idx+1]);
+
+                    } else {
+
+                        result.push(linear[idx], linear[idx+2], linear[idx+4], linear[idx+len]);
+
+                    }
+
+                }
+
+            }
+
+            return result;
+
+        }
+
+
+
+        function generatePivotArpeggioCells(scaleNotes, direction, progression) {
+
+            const len = scaleNotes.length;
+
+            const linear = buildLinearScale(scaleNotes, 4, 3);
+
+            const result = [];
+
+            const isAlternating = direction === 'forward-backward-alt' || direction === 'backward-forward-alt';
+
+            const isForwardFirst = direction === 'forward-backward-alt';
+
+            const startIdx = progression === 'up' ? 0 : len - 1;
+
+            const step = progression === 'up' ? 1 : -1;
+
+
+
+            if (isAlternating) {
+
+                for (let i = 0; i < len; i++) {
+
+                    const cellType = (isForwardFirst && i % 2 === 0) || (!isForwardFirst && i % 2 === 1) ? 'fwd' : 'bwd';
+
+                    const idx = (startIdx + i * step + len * 100) % len;
+
+
+
+                    if (cellType === 'fwd') {
+
+                        result.push(linear[idx + len], linear[idx + 2], linear[idx + 4], linear[idx + 6]);
+
+                    } else {
+
+                        result.push(linear[idx], linear[idx + len - 1], linear[idx + len - 3], linear[idx + len - 5]);
+
+                    }
+
+                }
+
+            } else {
+
+                const isBackward = direction === 'backward';
+
+                for (let i = 0; i < len; i++) {
+
+                    const idx = (startIdx + i * step + len * 100) % len;
+
+
+
+                    if (isBackward) {
+
+                        result.push(linear[idx], linear[idx + len - 1], linear[idx + len - 3], linear[idx + len - 5]);
+
+                    } else {
+
+                        result.push(linear[idx + len], linear[idx + 2], linear[idx + 4], linear[idx + 6]);
+
+                    }
 
                 }
 
