@@ -1490,15 +1490,17 @@
 
 
 
-                    result.push(scaleNotes[idx]);
-
                     if (cellType === 'fwd') {
+
+                        result.push(scaleNotes[idx]);
 
                         result.push(scaleNotes[(idx + 2) % len]);
 
                     } else {
 
-                        result.push(scaleNotes[(idx - 2 + len) % len]);
+                        result.push(scaleNotes[(idx + 2) % len]);
+
+                        result.push(scaleNotes[idx]);
 
                     }
 
@@ -1514,13 +1516,15 @@
 
 
 
-                    result.push(scaleNotes[idx]);
-
                     if (isBackward) {
 
-                        result.push(scaleNotes[(idx - 2 + len) % len]);
+                        result.push(scaleNotes[(idx + 2) % len]);
+
+                        result.push(scaleNotes[idx]);
 
                     } else {
+
+                        result.push(scaleNotes[idx]);
 
                         result.push(scaleNotes[(idx + 2) % len]);
 
@@ -1656,7 +1660,7 @@
 
                     } else {
 
-                        result.push(linear[idx+7], linear[idx+5], linear[idx+3], linear[idx+1]);
+                        result.push(linear[idx+6], linear[idx+4], linear[idx+2], linear[idx]);
 
                     }
 
@@ -1674,7 +1678,7 @@
 
                     if (isBackward) {
 
-                        result.push(linear[idx+7], linear[idx+5], linear[idx+3], linear[idx+1]);
+                        result.push(linear[idx+6], linear[idx+4], linear[idx+2], linear[idx]);
 
                     } else {
 
@@ -1726,7 +1730,7 @@
 
                     } else {
 
-                        result.push(linear[idx+len+1], linear[idx+5], linear[idx+3], linear[idx+1]);
+                        result.push(linear[idx+len], linear[idx+4], linear[idx+2], linear[idx]);
 
                     }
 
@@ -1744,7 +1748,7 @@
 
                     if (isBackward) {
 
-                        result.push(linear[idx+len+1], linear[idx+5], linear[idx+3], linear[idx+1]);
+                        result.push(linear[idx+len], linear[idx+4], linear[idx+2], linear[idx]);
 
                     } else {
 
