@@ -1196,55 +1196,6 @@
 
                     break;
 
-                case 'pivot-arpeggios': {
-
-                    // Uses a linear scale so large leaps are octave-assigned correctly.
-                    // forward : [i+len, i+2, i+4, i+6]  → octave-root, 3rd, 5th, 7th
-                    // backward: [i, i+len-1, i+len-3, i+len-5] → root, 7th-above, 5th, 3rd
-                    // alternating: even degrees use forward-pivot, odd degrees use backward-pivot
-
-                    const len = scaleNotes.length;
-
-                    const linear = buildLinearScale(scaleNotes, 4, 3);
-
-                    const asc = [], desc = [], alt = [];
-
-                    for (let i = 0; i < len; i++) {
-
-                        asc.push(linear[i + len], linear[i + 2], linear[i + 4], linear[i + 6]);
-
-                        desc.push(linear[i], linear[i + len - 1], linear[i + len - 3], linear[i + len - 5]);
-
-                    }
-
-                    for (let i = 0; i < len; i += 2) {
-
-                        alt.push(linear[i + len], linear[i + 2], linear[i + 4], linear[i + 6]);
-
-                        if (i + 1 < len) {
-
-                            const j = i + 1;
-
-                            alt.push(linear[j], linear[j + len - 1], linear[j + len - 3], linear[j + len - 5]);
-
-                        }
-
-                    }
-
-                    let r;
-
-                    if (direction === 'forward-backward-alt') r = alt;
-
-                    else if (direction === 'backward-forward-alt') r = alt.slice().reverse();
-
-                    else if (direction === 'backward') r = desc;
-
-                    else r = asc;
-
-                    return progression === 'down' ? r.slice().reverse() : r;
-
-                }
-
                 default:
 
                     patternNotes = scaleNotes.slice();
