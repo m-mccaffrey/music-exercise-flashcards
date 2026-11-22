@@ -475,7 +475,7 @@
         $('midi-enable').addEventListener('click', () => enableMidi(true));
         $('new-take').addEventListener('click', newTake);
         $('play-best').addEventListener('click', playBest);
-        $('any-octave').checked = !!state.settings.anyOctave;
+        $('any-octave').checked = state.settings.anyOctave !== false;
         $('any-octave').addEventListener('change', () => {
             state.settings.anyOctave = $('any-octave').checked; saveSettings();
             if (prac.take) prac.take.ignoreOctave = state.settings.anyOctave;
