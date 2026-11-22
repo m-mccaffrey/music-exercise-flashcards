@@ -141,3 +141,11 @@ test('levels only draw from their allowed material', () => {
         assert.ok(T.patternAllowed(p.pattern, p.scale));
     }
 });
+
+test('melodic lines are described as scale degrees by beat', () => {
+    const n = (letter, acc, octave, duration) => ({ letter, acc, octave, duration: duration || '8' });
+    const line = [{ rest: true, duration: 'q' }, n('C', 0, 4), n('E', 0, 4), n('G', 0, 4), n('A', 1, 4),
+        n('B', 0, 4), n('A', 0, 4), n('C', 0, 5, 'q')];
+    assert.equal(T.describeDegrees(line, 'C', 'major'), '1 ↑3 · 5 #6 · 7 ↓6 · ↑1');
+    assert.equal(T.describeDegrees([n('F', 0, 4), n('B', 0, 4, 'q')], 'F', 'major'), '1 ↑#4');
+});

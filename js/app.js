@@ -117,6 +117,12 @@
         const tags = [T.PATTERNS[card.pattern].name];
         if (card.pattern !== 'melodic-cells') tags.push(T.DIRECTIONS[card.direction]);
         if (card.pattern !== 'scale' && card.pattern !== 'melodic-cells') tags.push('Progression: ' + T.PROGRESSIONS[card.progression]);
+        const lineEl = $('card-line');
+        lineEl.hidden = card.pattern !== 'melodic-cells';
+        if (!lineEl.hidden) {
+            lineEl.innerHTML = '<span class="muted">Degrees</span>';
+            lineEl.appendChild(document.createTextNode(T.describeDegrees(state.notes, card.root, card.scale)));
+        }
         $('card-tags').innerHTML = '';
         for (const t of tags) {
             const s = document.createElement('span');

@@ -407,7 +407,41 @@
 
     function cardId(c) { return [c.root, c.scale, c.pattern, c.direction, c.progression].join('|'); }
 
+    // Describe a line as scale degrees grouped by beat, e.g. "↑1 3 · 5 7 · ↓6 #5 · 5".
+    // Chromatic notes are shown relative to the scale degree with the same letter
+    // (so a C# in C major is "#1"); an arrow marks every change of direction.
+    function describeDegrees(notes, rootName, scaleType) {
+        const scale = buildScale(rootName, scaleType);
+        const rootLetter = scale.notes[0].letter;
+        const degreeOf = (n) => {
+            const step = mod(LETTERS.indexOf(n.letter) - LETTERS.indexOf(rootLetter), 7);
+            const ref = scale.notes.find(s => s.letter === n.letter);
+            const diff = ref ? n.acc - ref.acc : 0;
+            return (diff > 0 ? '#'.repeat(diff) : 'b'.repeat(-diff)) + (step + 1);
+        };
+        const TICKS = { '8': 1, 'q': 2, 'h': 4 };
+        const beats = [];
+        let tick = 0, prev = null, dir = 0, beat = [];
+        for (const n of notes) {
+            if (n.rest) { tick += TICKS[n.duration]; continue; }
+            const m = toMidi(n);
+            let label = degreeOf(n);
+            if (prev !== null && m !== prev) {
+                const d = m > prev ? 1 : -1;
+                if (d !== dir) label = (d > 0 ? '↑' : '↓') + label;
+                dir = d;
+            }
+            prev = m;
+            beat.push(label);
+            tick += TICKS[n.duration || '8'];
+            if (tick % 2 === 0) { beats.push(beat.join(' ')); beat = []; }
+        }
+        if (beat.length) beats.push(beat.join(' '));
+        return beats.join(' · ');
+    }
+
     return {
+        describeDegrees,
         LETTERS, SCALES, PATTERNS, DIRECTIONS, PROGRESSIONS, LEVELS, PITCH_CLASSES, NATURAL_KEYS,
         noteName, toMidi, parseFormula, isTertian, patternAllowed, bestRootName, pitchClassOf,
         buildScale, generateExercise, drawCard, cardId, mod
