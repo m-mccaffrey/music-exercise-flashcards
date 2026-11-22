@@ -126,11 +126,13 @@
         $('notes-text').textContent = state.notes.map(n => n.rest ? '–' : T.noteName(n) + n.octave).join(' ');
         renderNotation();
         renderFretboard(card, spelled);
+        resetPractice();
     }
 
     function renderNotation() {
         try {
             state.noteEls = window.Notation.render($('notation'), state.notes);
+            paintTake();
         } catch (err) {
             state.noteEls = [];
             $('notation').textContent = 'Could not draw notation: ' + (err && err.message ? err.message : err);
@@ -189,17 +191,26 @@
     function secondsPerTick() { return 60 / state.settings.tempo / 2; }
 
     function scheduleNote(n, time, dur) {
-        if (n.rest) return;
+        if (!n.rest) synth(T.toMidi(n), time, dur);
+    }
+
+    function ensureAudio() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+    }
+
+    function synth(midi, time, dur, level) {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         osc.type = 'triangle';
-        osc.frequency.value = 440 * Math.pow(2, (T.toMidi(n) - 69) / 12);
+        osc.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
         gain.gain.setValueAtTime(0.0001, time);
-        gain.gain.exponentialRampToValueAtTime(0.35, time + 0.01);
+        gain.gain.exponentialRampToValueAtTime(level || 0.35, time + 0.01);
         gain.gain.exponentialRampToValueAtTime(0.0001, time + Math.max(0.05, dur * 0.92));
         osc.connect(gain).connect(audioCtx.destination);
         osc.start(time);
         osc.stop(time + dur);
+        return osc;
     }
 
     function scheduler() {
@@ -244,8 +255,8 @@
     function startPlayback() {
         if (play.active || play.raf) { stopPlayback(); return; }
         if (!state.notes.length) return;
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        if (audioCtx.state === 'suspended') audioCtx.resume();
+        stopBest();
+        ensureAudio();
         Object.assign(play, { active: true, index: 0, nextTime: audioCtx.currentTime + 0.08, queue: [] });
         $('play').innerHTML = '■ Stop <kbd>P</kbd>';
         scheduler();
@@ -260,6 +271,176 @@
         play.queue = [];
         highlight(-1);
         $('play').innerHTML = '▶ Play <kbd>P</kbd>';
+    }
+
+    // ---------- MIDI practice ----------
+    const P = window.Practice;
+    const TAKES_KEY = 'mef-takes-v1';
+    const prac = { targets: [], key: null, take: null, takeNo: 0, missTimer: null, bestTimers: [], bestOscs: [] };
+
+    function loadTakes() {
+        try { return JSON.parse(localStorage.getItem(TAKES_KEY)) || {}; } catch (e) { return {}; }
+    }
+    function saveRecord(key, record) {
+        const all = loadTakes();
+        all[key] = record;
+        try { localStorage.setItem(TAKES_KEY, JSON.stringify(all)); } catch (e) { /* storage full or blocked */ }
+    }
+    function currentRecord() { return loadTakes()[prac.key] || null; }
+
+    function resetPractice() {
+        stopBest();
+        prac.targets = P.targetsFrom(state.notes, T.toMidi);
+        prac.key = P.exerciseKey(state.card, prac.targets);
+        prac.take = null;
+        const rec = currentRecord();
+        prac.takeNo = rec ? rec.takes.length : 0;
+        $('take-status').textContent = 'Play the first note to start a take.';
+        showScores(null, rec);
+        paintTake();
+    }
+
+    function newTake() {
+        stopPlayback();
+        stopBest();
+        prac.take = P.createTake(prac.targets, { ignoreOctave: $('any-octave').checked });
+        prac.takeNo++;
+        updateTakeStatus();
+        paintTake();
+    }
+
+    function updateTakeStatus() {
+        const t = prac.take;
+        if (!t) return;
+        $('take-status').textContent = 'Take ' + prac.takeNo + ': ' + t.pos + ' / ' + t.targets.length + ' notes' +
+            (t.wrong ? ', ' + t.wrong + ' wrong' : '');
+    }
+
+    function setClass(index, cls, on) {
+        const el = state.noteEls[index];
+        if (el) el.classList.toggle(cls, on);
+    }
+
+    function paintTake() {
+        const t = prac.take;
+        prac.targets.forEach((tg, i) => {
+            setClass(tg.index, 'hit', !!t && i < t.pos);
+            setClass(tg.index, 'next', !!t && !t.done && i === t.pos);
+            setClass(tg.index, 'miss', false);
+        });
+    }
+
+    function flashMiss(index) {
+        setClass(index, 'miss', true);
+        clearTimeout(prac.missTimer);
+        prac.missTimer = setTimeout(() => setClass(index, 'miss', false), 250);
+    }
+
+    function onMidiNoteOn(midi, velocity, time) {
+        if (!prac.targets.length) return;
+        if (!prac.take || prac.take.done) newTake();
+        const t = prac.take;
+        const expected = t.targets[t.pos];
+        const res = P.noteOn(t, midi, velocity, time);
+        if (res === 'wrong') flashMiss(expected.index);
+        paintTake();
+        updateTakeStatus();
+        if (t.done) finishTake();
+    }
+
+    function onMidiNoteOff(midi, time) {
+        if (prac.take) P.noteOff(prac.take, midi, time);
+    }
+
+    function finishTake() {
+        const t = prac.take;
+        // Give the last note a moment to release so the recording includes its length.
+        setTimeout(() => {
+            const out = P.addTake(currentRecord(), t, Date.now());
+            saveRecord(prac.key, out.record);
+            const r = out.result;
+            $('take-status').textContent = 'Take ' + prac.takeNo + ' done' + (out.isBest ? ' — new best!' : '') +
+                ' Play again for another take.';
+            showScores(r, out.record);
+        }, 600);
+    }
+
+    function showScores(r, rec) {
+        $('s-score').textContent = r ? r.score : '–';
+        $('s-accuracy').textContent = r ? r.accuracy + '%' : '–';
+        $('s-rhythm').textContent = r ? r.rhythm + '%' : '–';
+        $('s-bpm').textContent = r && r.bpm ? r.bpm + ' bpm' : '–';
+        $('s-best').textContent = rec && rec.best ? rec.best.score : '–';
+        $('play-best').disabled = !(rec && rec.best && rec.best.events.length);
+        const bars = $('history-bars');
+        bars.innerHTML = '';
+        const takes = rec ? rec.takes : [];
+        $('take-count').textContent = takes.length ? takes.length + (takes.length === 1 ? ' take' : ' takes') : 'none yet';
+        const bestAt = rec && rec.best ? rec.best.at : null;
+        for (const tk of takes) {
+            const b = document.createElement('div');
+            b.className = 'bar' + (tk.at === bestAt ? ' best' : '');
+            b.style.height = Math.max(2, tk.score) + '%';
+            b.title = 'Score ' + tk.score + ' (notes ' + tk.accuracy + '%, evenness ' + tk.rhythm + '%)';
+            bars.appendChild(b);
+        }
+    }
+
+    function playBest() {
+        if (prac.bestTimers.length) { stopBest(); return; }
+        const rec = currentRecord();
+        if (!rec || !rec.best) return;
+        stopPlayback();
+        ensureAudio();
+        const start = audioCtx.currentTime + 0.1;
+        const ev = rec.best.events; // [on(1)/off(0), midi, velocity, ms]
+        let endMs = 0;
+        ev.forEach((e, i) => {
+            if (e[0] !== 1) return;
+            let off = ev.slice(i + 1).find(o => o[1] === e[1]);
+            const durMs = off ? off[3] - e[3] : 400;
+            prac.bestOscs.push(synth(e[1], start + e[3] / 1000, Math.max(0.08, durMs / 1000), 0.1 + 0.3 * (e[2] / 127)));
+            endMs = Math.max(endMs, e[3] + durMs);
+        });
+        $('play-best').innerHTML = '■ Stop <kbd>B</kbd>';
+        prac.bestTimers.push(setTimeout(stopBest, endMs + 200));
+    }
+
+    function stopBest() {
+        prac.bestTimers.forEach(clearTimeout);
+        prac.bestTimers = [];
+        prac.bestOscs.forEach(o => { try { o.stop(); } catch (e) { /* already stopped */ } });
+        prac.bestOscs = [];
+        $('play-best').innerHTML = '▶ Play best take <kbd>B</kbd>';
+    }
+
+    let midiAccess = null;
+    function handleMidiMessage(e) {
+        const [status, d1, d2] = e.data;
+        const cmd = status & 0xf0;
+        const time = e.timeStamp || performance.now();
+        if (cmd === 0x90 && d2 > 0) onMidiNoteOn(d1, d2, time);
+        else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) onMidiNoteOff(d1, time);
+    }
+    function refreshMidiInputs() {
+        const names = [];
+        midiAccess.inputs.forEach(input => { input.onmidimessage = handleMidiMessage; names.push(input.name); });
+        $('midi-status').textContent = names.length ? 'Listening to: ' + names.join(', ') : 'No MIDI input found. Plug one in.';
+        $('midi-enable').hidden = names.length > 0;
+    }
+    function enableMidi(fromUser) {
+        if (!navigator.requestMIDIAccess) {
+            if (fromUser) $('midi-status').textContent = 'This browser has no Web MIDI support (try Chrome or Edge).';
+            return;
+        }
+        navigator.requestMIDIAccess().then(access => {
+            midiAccess = access;
+            access.onstatechange = refreshMidiInputs;
+            refreshMidiInputs();
+            state.settings.midi = true; saveSettings();
+        }, () => {
+            if (fromUser) $('midi-status').textContent = 'MIDI access was blocked. Allow it in the browser’s site settings.';
+        });
     }
 
     // ---------- Wiring ----------
@@ -291,6 +472,15 @@
             syncManualControls(); saveSettings(); nextCard();
         });
         $('next').addEventListener('click', nextCard);
+        $('midi-enable').addEventListener('click', () => enableMidi(true));
+        $('new-take').addEventListener('click', newTake);
+        $('play-best').addEventListener('click', playBest);
+        $('any-octave').checked = !!state.settings.anyOctave;
+        $('any-octave').addEventListener('change', () => {
+            state.settings.anyOctave = $('any-octave').checked; saveSettings();
+            if (prac.take) prac.take.ignoreOctave = state.settings.anyOctave;
+        });
+        if (state.settings.midi) enableMidi(false);
         $('play').addEventListener('click', startPlayback);
         $('tempo').addEventListener('input', () => {
             state.settings.tempo = +$('tempo').value;
@@ -304,6 +494,8 @@
             if (tag === 'SELECT' || tag === 'INPUT' || e.metaKey || e.ctrlKey || e.altKey) return;
             if (e.key === ' ' || e.key === 'n') { e.preventDefault(); nextCard(); }
             else if (e.key === 'p') startPlayback();
+            else if (e.key === 't') newTake();
+            else if (e.key === 'b') playBest();
         });
 
         let resizeTimer;

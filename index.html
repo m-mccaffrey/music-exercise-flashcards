@@ -54,6 +54,31 @@
         <label class="check"><input type="checkbox" id="loop"> Loop</label>
     </section>
 
+    <section class="practice" id="practice">
+        <div class="practice-bar">
+            <h2 class="practice-title">MIDI practice</h2>
+            <button type="button" id="midi-enable">Connect MIDI</button>
+            <span id="midi-status" class="muted">No MIDI device connected</span>
+        </div>
+        <div class="practice-bar">
+            <button type="button" id="new-take" class="primary">New take <kbd>T</kbd></button>
+            <button type="button" id="play-best" disabled>▶ Play best take <kbd>B</kbd></button>
+            <label class="check"><input type="checkbox" id="any-octave"> Accept any octave</label>
+            <span id="take-status" class="muted">Play the first note to start a take.</span>
+        </div>
+        <div class="scores">
+            <div class="score"><span class="score-label">Score</span><span id="s-score" class="score-value">–</span></div>
+            <div class="score"><span class="score-label">Notes</span><span id="s-accuracy" class="score-value">–</span></div>
+            <div class="score"><span class="score-label">Evenness</span><span id="s-rhythm" class="score-value">–</span></div>
+            <div class="score"><span class="score-label">Tempo</span><span id="s-bpm" class="score-value">–</span></div>
+            <div class="score"><span class="score-label">Best</span><span id="s-best" class="score-value">–</span></div>
+        </div>
+        <div class="history">
+            <div class="history-head"><span>Takes on this exercise</span><span id="take-count" class="muted"></span></div>
+            <div id="history-bars" class="history-bars" aria-label="Score per take"></div>
+        </div>
+    </section>
+
     <details class="fretboard-details">
         <summary>Fretboard</summary>
         <div class="fretboard-wrap"><div id="fretboard" class="fretboard"></div></div>
@@ -63,6 +88,7 @@
 <script src="https://cdn.jsdelivr.net/npm/vexflow@4.2.5/build/cjs/vexflow.js"></script>
 <script src="js/theory.js"></script>
 <script src="js/notation.js"></script>
+<script src="js/practice.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
