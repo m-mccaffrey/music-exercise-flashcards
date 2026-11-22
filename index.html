@@ -53,6 +53,13 @@
         <button type="button" id="play">▶ Play <kbd>P</kbd></button>
         <label class="tempo">Tempo <input type="range" id="tempo" min="40" max="240" value="80" step="4"> <output id="tempo-value">80</output> BPM</label>
         <label class="check"><input type="checkbox" id="loop"> Loop</label>
+        <label class="check" title="Barry Harris style: half step below the target; if that note is in the scale, the scale tone above instead.">Approach tones
+            <select id="approach">
+                <option value="none">Off</option>
+                <option value="approach">Approach</option>
+                <option value="enclosure">Enclosure</option>
+            </select>
+        </label>
     </section>
 
     <section class="practice" id="practice">

@@ -66,15 +66,15 @@
         $('pattern').value = m.pattern;
         $('direction').value = m.direction;
         $('progression').value = m.progression;
-        const noProg = m.pattern === 'scale' || m.pattern === 'melodic-cells';
-        $('progression').disabled = noProg;
-        $('direction').disabled = m.pattern === 'melodic-cells';
+        $('progression').disabled = m.pattern === 'scale';
     }
 
     function manualCard() {
         const m = state.settings.manual;
-        return { root: T.bestRootName(+m.pc, m.scale), scale: m.scale, pattern: m.pattern,
+        const card = { root: T.bestRootName(+m.pc, m.scale), scale: m.scale, pattern: m.pattern,
             direction: m.direction, progression: m.progression };
+        if (m.pattern === 'melodic-cells') card.cell = T.randomCell();
+        return card;
     }
 
     // ---------- Mode / level ----------
@@ -109,19 +109,21 @@
     function showCard(card) {
         stopPlayback();
         state.card = card;
-        state.notes = T.generateExercise(card.root, card.scale, card.pattern, card.direction, card.progression);
+        const approach = state.settings.approach || 'none';
+        state.notes = T.generateExercise(card.root, card.scale, card.pattern, card.direction, card.progression,
+            { cell: card.cell, approach });
         const scale = T.SCALES[card.scale];
         $('card-title').textContent = card.root + ' ' + scale.name;
         const spelled = T.buildScale(card.root, card.scale).notes.map(T.noteName);
         $('card-formula').textContent = scale.formula + '   ·   ' + spelled.join(' ');
-        const tags = [T.PATTERNS[card.pattern].name];
-        if (card.pattern !== 'melodic-cells') tags.push(T.DIRECTIONS[card.direction]);
-        if (card.pattern !== 'scale' && card.pattern !== 'melodic-cells') tags.push('Progression: ' + T.PROGRESSIONS[card.progression]);
+        const tags = [T.PATTERNS[card.pattern].name, T.DIRECTIONS[card.direction]];
+        if (card.pattern !== 'scale') tags.push('Progression: ' + T.PROGRESSIONS[card.progression]);
+        if (card.pattern !== 'scale' && approach !== 'none') tags.push(approach === 'approach' ? 'With approach tones' : 'With enclosures');
         const lineEl = $('card-line');
-        lineEl.hidden = card.pattern !== 'melodic-cells';
-        if (!lineEl.hidden) {
-            lineEl.innerHTML = '<span class="muted">Degrees</span>';
-            lineEl.appendChild(document.createTextNode(T.describeDegrees(state.notes, card.root, card.scale)));
+        lineEl.hidden = !card.cell;
+        if (card.cell) {
+            lineEl.innerHTML = '<span class="muted">Cell</span>';
+            lineEl.appendChild(document.createTextNode(T.describeCell(card.cell)));
         }
         $('card-tags').innerHTML = '';
         for (const t of tags) {
@@ -478,6 +480,11 @@
             syncManualControls(); saveSettings(); nextCard();
         });
         $('next').addEventListener('click', nextCard);
+        $('approach').value = state.settings.approach || 'none';
+        $('approach').addEventListener('change', () => {
+            state.settings.approach = $('approach').value; saveSettings();
+            if (state.card) showCard(state.card);
+        });
         $('midi-enable').addEventListener('click', () => enableMidi(true));
         $('new-take').addEventListener('click', newTake);
         $('play-best').addEventListener('click', playBest);

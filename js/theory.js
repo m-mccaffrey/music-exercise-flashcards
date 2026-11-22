@@ -150,7 +150,7 @@
         'arpeggios':       { name: 'Arpeggios (1-3-5-8)',   tertian: true, chordal: true,  shape: [0, 2, 4, 7] },
         // Pivot: octave down to the 3rd then up through 5-7; reversed: root up to 7th, down to 3rd.
         'pivot-arpeggios': { name: 'Pivot Arpeggios',       tertian: true, chordal: true,  fwd: [7, 2, 4, 6], bwd: [0, 6, 4, 2] },
-        'melodic-cells':   { name: 'Melodic Cells (Random)', tertian: true }
+        'melodic-cells':   { name: 'Melodic Cell', tertian: true }
     };
 
     const DIRECTIONS = {
@@ -181,67 +181,38 @@
     // degrees 0..len-1 and resolves to the octave. "Down" anchors runs/intervals by their
     // highest note on degrees len..1, and chordal cells on chord roots len-1..0; both
     // resolve to the root.
-    function cellDegrees(pattern, len, direction, progression) {
+    function cellShapes(pattern, opts) {
+        if (pattern === 'melodic-cells') {
+            const fwd = cellOffsets(opts.cell);
+            return { fwd, bwd: fwd.slice().reverse() };
+        }
         const p = PATTERNS[pattern];
         const fwd = p.fwd || p.shape;
-        const bwd = p.bwd || fwd.slice().reverse();
+        return { fwd, bwd: p.bwd || fwd.slice().reverse(), chordal: !!p.chordal };
+    }
+
+    // Returns one degree list per cell, plus the tonic degree to resolve to.
+    function cellDegrees(pattern, len, direction, progression, opts) {
+        const { fwd, bwd, chordal } = cellShapes(pattern, opts);
         const span = Math.max(...fwd);
         const alternating = direction.endsWith('-alt');
         const forwardFirst = direction === 'forward-backward-alt';
-        const out = [];
+        const cells = [];
         for (let i = 0; i < len; i++) {
             // Chordal cells descend through chord roots (7th chord .. tonic chord);
-            // runs/intervals descend so each cell's top note walks down from the octave.
-            const base = progression === 'up' ? i : p.chordal ? len - 1 - i : (len - i) - span;
-            let isFwd;
-            if (alternating) isFwd = (i % 2 === 0) === forwardFirst;
-            else isFwd = direction === 'forward';
-            for (const off of (isFwd ? fwd : bwd)) out.push(base + off);
+            // other cells descend so each cell's top note walks down from the octave.
+            const base = progression === 'up' ? i : chordal ? len - 1 - i : (len - i) - span;
+            const isFwd = alternating ? (i % 2 === 0) === forwardFirst : direction === 'forward';
+            cells.push((isFwd ? fwd : bwd).map(off => base + off));
         }
-        const tonic = progression === 'up' ? len : 0;
-        return { degrees: out, tonic };
+        return { cells, tonic: progression === 'up' ? len : 0 };
     }
 
-    // Returns an array of notes (with durations) ready to render and play.
-    function generateExercise(rootName, scaleType, pattern, direction, progression, rng) {
-        rng = rng || Math.random;
-        const scale = buildScale(rootName, scaleType);
-        if (pattern === 'melodic-cells') return fitRange(generateMelodicCellLine(scale, rng));
-        let degrees, tonic = null;
-        if (pattern === 'scale') {
-            degrees = fullScaleDegrees(scale.len, direction);
-        } else {
-            ({ degrees, tonic } = cellDegrees(pattern, scale.len, direction, progression));
-        }
-        const notes = degrees.map(k => Object.assign(scale.degree(k), { duration: '8' }));
-        // Resolve to the tonic with a held note.
-        if (tonic !== null) {
-            const last = degrees[degrees.length - 1];
-            if (mod(last, scale.len) === 0 && Math.abs(last - tonic) <= scale.len) notes[notes.length - 1].duration = 'q';
-            else notes.push(Object.assign(scale.degree(tonic), { duration: 'q' }));
-        } else {
-            notes[notes.length - 1].duration = 'q';
-        }
-        return fitRange(notes);
-    }
-
-    // Shift a whole line by octaves so it sits within the guitar's comfortable written
-    // range (E3..D6, i.e. 22 frets) when possible.
-    const LOW = 52, HIGH = 86;
-    function fitRange(notes) {
-        const midis = notes.filter(n => !n.rest).map(toMidi);
-        const lo = Math.min(...midis), hi = Math.max(...midis);
-        let shift = 0;
-        while (hi + 12 * shift > HIGH && lo + 12 * (shift - 1) >= LOW) shift--;
-        while (lo + 12 * shift < LOW && hi + 12 * (shift + 1) <= HIGH) shift++;
-        if (shift) notes.forEach(n => { if (!n.rest) n.octave += shift; });
-        return notes;
-    }
-
-    // ---------- Melodic cells ----------
-    // Randomly stitches 1-2 beat cells (scale steps, diatonic thirds, chromatic
-    // approach tones) so that a chord tone (1/3/5/7) lands on every downbeat, then
-    // resolves to the root. Leading rests pad it to whole 4/4 bars.
+    // ---------- Approach tones (Barry Harris style) ----------
+    // approach:  half step below the target, unless that pitch is already in the scale,
+    //            in which case the scale tone above the target.
+    // enclosure: scale tone above, then half step below; if the half step below is a
+    //            scale tone, the chromatic half step above, then that scale tone below.
     function spellApproach(targetMidi, targetLetter, fromBelow) {
         const midi = fromBelow ? targetMidi - 1 : targetMidi + 1;
         const neighbour = shiftLetter(targetLetter, fromBelow ? -1 : 1);
@@ -250,85 +221,108 @@
         return spellWithLetter(midi, targetLetter);
     }
 
-    function generateMelodicCellLine(scale, rng) {
-        const len = scale.len;
-        const isChordTone = (k) => { const d = mod(k, len); return d % 2 === 0 && d <= 6; };
-        const lo = -2, hi = len + 5; // keep the line within roughly a 9th either side of the root
-        const inRange = (k) => k >= lo && k <= hi;
+    function approachNotes(scale, k, kind) {
+        const target = scale.degree(k);
+        const tMidi = toMidi(target);
+        const pcs = new Set(scale.notes.map(n => mod(toMidi(n), 12)));
+        const belowInScale = pcs.has(mod(tMidi - 1, 12));
+        const aboveInScale = pcs.has(mod(tMidi + 1, 12));
+        const chromBelow = () => spellApproach(tMidi, target.letter, true);
+        const chromAbove = () => spellApproach(tMidi, target.letter, false);
+        if (kind === 'approach') return [belowInScale ? scale.degree(k + 1) : chromBelow()];
+        if (kind === 'enclosure') {
+            if (!belowInScale) return [scale.degree(k + 1), chromBelow()];
+            if (!aboveInScale) return [chromAbove(), scale.degree(k - 1)];
+            return [scale.degree(k + 1), scale.degree(k - 1)];
+        }
+        return [];
+    }
 
-        function stepCell(start, beats, dir, stride) {
-            const notes = [];
-            for (let t = 0; t < beats * 2; t++) {
-                const k = start + t * dir * stride;
-                if (!inRange(k)) return null;
-                if (t % 2 === 0 && !isChordTone(k)) return null;
-                notes.push(scale.degree(k));
+    // Returns an array of notes (with durations) ready to render and play.
+    // opts: { cell: interval list for melodic cells, approach: 'none'|'approach'|'enclosure' }
+    function generateExercise(rootName, scaleType, pattern, direction, progression, opts) {
+        opts = Object.assign({ approach: 'none' }, opts);
+        if (pattern === 'melodic-cells' && !opts.cell) opts.cell = randomCell(Math.random);
+        const scale = buildScale(rootName, scaleType);
+        const asNote = (n) => Object.assign(n, { duration: '8' });
+        let notes, tonic = null, lastDeg;
+        if (pattern === 'scale') {
+            const degrees = fullScaleDegrees(scale.len, direction);
+            notes = degrees.map(k => asNote(scale.degree(k)));
+            lastDeg = degrees[degrees.length - 1];
+        } else {
+            const res = cellDegrees(pattern, scale.len, direction, progression, opts);
+            tonic = res.tonic;
+            notes = [];
+            for (const cell of res.cells) {
+                if (opts.approach !== 'none') notes.push(...approachNotes(scale, cell[0], opts.approach).map(asNote));
+                notes.push(...cell.map(k => asNote(scale.degree(k))));
             }
-            const land = start + beats * 2 * dir * stride;
-            if (!inRange(land) || !isChordTone(land)) return null;
-            return { notes, land };
+            const lastCell = res.cells[res.cells.length - 1];
+            lastDeg = lastCell[lastCell.length - 1];
         }
+        // Resolve to the tonic with a held note.
+        if (tonic === null || lastDeg === tonic) {
+            notes[notes.length - 1].duration = 'q';
+        } else {
+            if (opts.approach !== 'none') notes.push(...approachNotes(scale, tonic, opts.approach).map(asNote));
+            notes.push(Object.assign(scale.degree(tonic), { duration: 'q' }));
+        }
+        return fitRange(notes);
+    }
 
-        function chromaticCell(start, dir) {
-            const land = start + 2 * dir;
-            if (!inRange(land) || !isChordTone(land)) return null;
-            const target = scale.degree(land);
-            const approach = spellApproach(toMidi(target), target.letter, dir > 0);
-            if (Math.abs(toMidi(approach) - toMidi(scale.degree(start))) < 1) return null;
-            return { notes: [scale.degree(start), approach], land };
-        }
+    // ---------- Melodic cells ----------
+    // A cell is a short motif of diatonic intervals, given as signed scale steps
+    // (+2 = up a third, -1 = down a second), sequenced through the scale like the
+    // other patterns.
+    function cellOffsets(cell) {
+        const out = [0];
+        for (const step of cell) out.push(out[out.length - 1] + step);
+        return out;
+    }
 
-        function randomCell(start) {
-            const makers = [];
-            for (const dir of [1, -1]) {
-                for (const beats of [1, 2]) {
-                    makers.push(() => stepCell(start, beats, dir, 1));
-                    makers.push(() => stepCell(start, beats, dir, 2));
-                }
-                makers.push(() => chromaticCell(start, dir));
-            }
-            for (let i = makers.length - 1; i > 0; i--) {
-                const j = Math.floor(rng() * (i + 1));
-                [makers[i], makers[j]] = [makers[j], makers[i]];
-            }
-            for (const make of makers) { const c = make(); if (c) return c; }
-            return null;
-        }
+    function describeCell(cell) {
+        return cell.map(st => (st > 0 ? '↑' : '↓') + (Math.abs(st) + 1)).join(' ');
+    }
 
-        const chordDegrees = [0, 2, 4, 6];
-        let k = chordDegrees[Math.floor(rng() * chordDegrees.length)];
-        const line = [];
-        let beats = 0;
-        while (beats < 16) {
-            const cell = randomCell(k);
-            if (!cell) break;
-            line.push(...cell.notes);
-            beats += cell.notes.length / 2;
-            k = cell.land;
-            if (beats >= 6 && mod(k, len) === 0) break;
+    // Rules: 2-4 intervals (2nd..6th, no unisons), stays within a 4th below / 6th
+    // above the starting note, has at least one leap, never ends a step away from its
+    // start (the next cell starts there, so that would repeat a note), and doesn't
+    // immediately undo a leap.
+    function cellOk(cell) {
+        const offs = cellOffsets(cell);
+        if (Math.min(...offs) < -3 || Math.max(...offs) > 5) return false;
+        if (!cell.some(st => Math.abs(st) >= 2)) return false;
+        const net = offs[offs.length - 1];
+        if (Math.abs(net) === 1) return false;
+        for (let i = 1; i < cell.length; i++) if (cell[i] === -cell[i - 1] && Math.abs(cell[i]) >= 2) return false;
+        if (new Set(offs).size < offs.length - 1) return false; // mostly distinct notes
+        return true;
+    }
+
+    function randomCell(rng) {
+        rng = rng || Math.random;
+        const SIZES = [1, 1, 1, 2, 2, 2, 3, 3, 4, 5]; // weight toward steps and thirds
+        for (let tries = 0; tries < 500; tries++) {
+            const n = 2 + Math.floor(rng() * 3);
+            const cell = [];
+            for (let i = 0; i < n; i++) cell.push(SIZES[Math.floor(rng() * SIZES.length)] * (rng() < 0.55 ? 1 : -1));
+            if (cellOk(cell)) return cell;
         }
-        // Walk home to a root: down by chord-tone thirds, or a 7th resolving up by step.
-        const notes = line.map(n => Object.assign(n, { duration: '8' }));
-        let guard = 0;
-        while (mod(k, len) !== 0 && guard++ < 8) {
-            if (mod(k, len) === 6) {
-                notes.push(Object.assign(scale.degree(k), { duration: 'q' }));
-                beats += 1;
-                k += 1;
-                break;
-            }
-            const cell = stepCell(k, 1, -1, 1) || chromaticCell(k, -1);
-            if (!cell) break;
-            notes.push(...cell.notes.map(n => Object.assign(n, { duration: '8' })));
-            beats += 1;
-            k = cell.land;
-        }
-        notes.push(Object.assign(scale.degree(k), { duration: 'q' }));
-        let pad = mod(4 - mod(beats + 1, 4), 4);
-        const rests = [];
-        if (pad >= 2) { rests.push({ rest: true, duration: 'h' }); pad -= 2; }
-        if (pad >= 1) rests.push({ rest: true, duration: 'q' });
-        return rests.concat(notes);
+        return [2, -1, 2];
+    }
+
+    // Shift a whole line by octaves so it sits within the guitar's comfortable written
+    // range (E3..E6, a 24-fret neck) when possible.
+    const LOW = 52, HIGH = 88;
+    function fitRange(notes) {
+        const midis = notes.filter(n => !n.rest).map(toMidi);
+        const lo = Math.min(...midis), hi = Math.max(...midis);
+        let shift = 0;
+        while (hi + 12 * shift > HIGH && lo + 12 * (shift - 1) >= LOW) shift--;
+        while (lo + 12 * shift < LOW && hi + 12 * (shift + 1) <= HIGH) shift++;
+        if (shift) notes.forEach(n => { if (!n.rest) n.octave += shift; });
+        return notes;
     }
 
     // ---------- Difficulty levels (auto mode) ----------
@@ -377,7 +371,7 @@
                   patterns: RUNS.concat(INTERVALS, CHORDAL), directions: ALL_DIRS, progressions: ['up', 'down'] },
                 { weight: 2, keys: ALL_KEYS,
                   scales: Object.keys(SCALES).filter(s => isTertian(s)),
-                  patterns: ['melodic-cells'], directions: ['forward'], progressions: ['up'] },
+                  patterns: ['melodic-cells'], directions: ALL_DIRS, progressions: ['up', 'down'] },
                 { weight: 1, keys: ALL_KEYS, scales: Object.keys(SCALES).filter(s => !isTertian(s)),
                   patterns: RUNS, directions: ALL_DIRS, progressions: ['up', 'down'] }
             ]
@@ -397,51 +391,20 @@
         const scale = pick(pool.scales, rng);
         const key = pick(pool.keys, rng);
         const root = typeof key === 'number' ? bestRootName(key, scale) : key;
-        return {
+        const card = {
             root, scale,
             pattern: pick(pool.patterns, rng),
             direction: pick(pool.directions, rng),
             progression: pick(pool.progressions, rng)
         };
+        if (card.pattern === 'melodic-cells') card.cell = randomCell(rng);
+        return card;
     }
 
-    function cardId(c) { return [c.root, c.scale, c.pattern, c.direction, c.progression].join('|'); }
-
-    // Describe a line as scale degrees grouped by beat, e.g. "↑1 3 · 5 7 · ↓6 #5 · 5".
-    // Chromatic notes are shown relative to the scale degree with the same letter
-    // (so a C# in C major is "#1"); an arrow marks every change of direction.
-    function describeDegrees(notes, rootName, scaleType) {
-        const scale = buildScale(rootName, scaleType);
-        const rootLetter = scale.notes[0].letter;
-        const degreeOf = (n) => {
-            const step = mod(LETTERS.indexOf(n.letter) - LETTERS.indexOf(rootLetter), 7);
-            const ref = scale.notes.find(s => s.letter === n.letter);
-            const diff = ref ? n.acc - ref.acc : 0;
-            return (diff > 0 ? '#'.repeat(diff) : 'b'.repeat(-diff)) + (step + 1);
-        };
-        const TICKS = { '8': 1, 'q': 2, 'h': 4 };
-        const beats = [];
-        let tick = 0, prev = null, dir = 0, beat = [];
-        for (const n of notes) {
-            if (n.rest) { tick += TICKS[n.duration]; continue; }
-            const m = toMidi(n);
-            let label = degreeOf(n);
-            if (prev !== null && m !== prev) {
-                const d = m > prev ? 1 : -1;
-                if (d !== dir) label = (d > 0 ? '↑' : '↓') + label;
-                dir = d;
-            }
-            prev = m;
-            beat.push(label);
-            tick += TICKS[n.duration || '8'];
-            if (tick % 2 === 0) { beats.push(beat.join(' ')); beat = []; }
-        }
-        if (beat.length) beats.push(beat.join(' '));
-        return beats.join(' · ');
-    }
+    function cardId(c) { return [c.root, c.scale, c.pattern, c.direction, c.progression, (c.cell || []).join(',')].join('|'); }
 
     return {
-        describeDegrees,
+        describeCell, randomCell, cellOk, cellOffsets,
         LETTERS, SCALES, PATTERNS, DIRECTIONS, PROGRESSIONS, LEVELS, PITCH_CLASSES, NATURAL_KEYS,
         noteName, toMidi, parseFormula, isTertian, patternAllowed, bestRootName, pitchClassOf,
         buildScale, generateExercise, drawCard, cardId, mod

@@ -88,41 +88,60 @@ test('every exercise ends on the tonic', () => {
     for (const level of Object.keys(T.LEVELS)) {
         for (let i = 0; i < 300; i++) {
             const c = T.drawCard(level, rng);
-            const notes = T.generateExercise(c.root, c.scale, c.pattern, c.direction, c.progression, rng);
+            const approach = ['none', 'approach', 'enclosure'][i % 3];
+            const notes = T.generateExercise(c.root, c.scale, c.pattern, c.direction, c.progression, { cell: c.cell, approach });
             const last = notes[notes.length - 1];
             assert.equal(T.noteName(last), T.noteName(T.buildScale(c.root, c.scale).notes[0]), JSON.stringify(c));
         }
     }
 });
 
-test('exercises stay in a guitar-friendly written range (E3..D6)', () => {
+test('exercises stay in a guitar-friendly written range (E3..E6)', () => {
     const rng = seeded(11);
     for (let i = 0; i < 2000; i++) {
         const c = T.drawCard(i % 2 ? 'pro' : 'hard', rng);
-        for (const n of T.generateExercise(c.root, c.scale, c.pattern, c.direction, c.progression, rng)) {
+        for (const n of T.generateExercise(c.root, c.scale, c.pattern, c.direction, c.progression, { cell: c.cell, approach: i % 3 ? 'enclosure' : 'none' })) {
             if (n.rest) continue;
             const m = T.toMidi(n);
-            assert.ok(m >= 52 && m <= 86, `${T.noteName(n)}${n.octave} in ${JSON.stringify(c)}`);
+            assert.ok(m >= 52 && m <= 88, `${T.noteName(n)}${n.octave} in ${JSON.stringify(c)}`);
         }
     }
 });
 
-test('melodic cells fill whole 4/4 bars and put chord tones on downbeats', () => {
-    const TICKS = { '8': 1, 'q': 2, 'h': 4 };
+test('random cells follow the cell rules', () => {
     const rng = seeded(3);
-    for (const scale of ['major', 'dorian', 'melodic-minor', 'altered', 'hungarian-minor']) {
-        for (let i = 0; i < 100; i++) {
-            const s = T.buildScale('D', scale);
-            const chordPcs = new Set([0, 2, 4, 6].map(d => T.mod(T.toMidi(s.notes[d]), 12)));
-            const notes = T.generateExercise('D', scale, 'melodic-cells', 'forward', 'up', rng);
-            let tick = 0;
-            for (const n of notes) {
-                if (!n.rest && tick % 2 === 0) assert.ok(chordPcs.has(T.mod(T.toMidi(n), 12)), `downbeat ${T.noteName(n)} in D ${scale}`);
-                tick += TICKS[n.duration];
-            }
-            assert.equal(tick % 8, 0);
-        }
+    for (let i = 0; i < 2000; i++) {
+        const cell = T.randomCell(rng);
+        assert.ok(cell.length >= 2 && cell.length <= 4, String(cell));
+        assert.ok(T.cellOk(cell), String(cell));
+        assert.ok(cell.every(st => st !== 0));
+        const offs = T.cellOffsets(cell);
+        assert.notEqual(Math.abs(offs[offs.length - 1]), 1, 'cell must not end a step from its start: ' + cell);
     }
+    assert.equal(T.describeCell([2, -1, 3]), '↑3 ↓2 ↑4');
+});
+
+test('melodic cells are sequenced through the scale', () => {
+    const notes = T.generateExercise('C', 'major', 'melodic-cells', 'forward', 'up', { cell: [2, -1, 3] });
+    assert.deepEqual(names(notes).slice(0, 8), ['C4', 'E4', 'D4', 'G4', 'D4', 'F4', 'E4', 'A4']);
+    assert.equal(names(notes).at(-1), 'C5');
+    const back = T.generateExercise('C', 'major', 'melodic-cells', 'backward', 'up', { cell: [2, -1, 3] });
+    assert.deepEqual(names(back).slice(0, 4), ['G4', 'D4', 'E4', 'C4']);
+});
+
+test('approach tones follow the Barry Harris rule', () => {
+    // C major thirds, up. Target C: B is in the scale, so use D above. Target D: C# isn't, so C#.
+    const a = names(T.generateExercise('C', 'major', 'thirds', 'forward', 'up', { approach: 'approach' }));
+    assert.deepEqual(a.slice(0, 6), ['D4', 'C4', 'E4', 'C#4', 'D4', 'F4']);
+    // Target F: E is in the scale -> G above.
+    assert.deepEqual(a.slice(9, 12), ['G4', 'F4', 'A4']);
+    // Enclosures: target D -> E above, C# below; target C (B in scale) -> Db above, B below.
+    const e = names(T.generateExercise('C', 'major', 'thirds', 'forward', 'up', { approach: 'enclosure' }));
+    assert.deepEqual(e.slice(0, 4), ['Db4', 'B3', 'C4', 'E4']);
+    assert.deepEqual(e.slice(4, 8), ['E4', 'C#4', 'D4', 'F4']);
+    // Approach spelled from the letter below where possible (Eb major, target F: E natural).
+    const f = names(T.generateExercise('Eb', 'major', 'thirds', 'forward', 'up', { approach: 'approach' }));
+    assert.deepEqual(f.slice(3, 5), ['E4', 'F4']);
 });
 
 test('levels only draw from their allowed material', () => {
@@ -140,12 +159,4 @@ test('levels only draw from their allowed material', () => {
         const p = T.drawCard('pro', rng);
         assert.ok(T.patternAllowed(p.pattern, p.scale));
     }
-});
-
-test('melodic lines are described as scale degrees by beat', () => {
-    const n = (letter, acc, octave, duration) => ({ letter, acc, octave, duration: duration || '8' });
-    const line = [{ rest: true, duration: 'q' }, n('C', 0, 4), n('E', 0, 4), n('G', 0, 4), n('A', 1, 4),
-        n('B', 0, 4), n('A', 0, 4), n('C', 0, 5, 'q')];
-    assert.equal(T.describeDegrees(line, 'C', 'major'), '1 ↑3 · 5 #6 · 7 ↓6 · ↑1');
-    assert.equal(T.describeDegrees([n('F', 0, 4), n('B', 0, 4, 'q')], 'F', 'major'), '1 ↑#4');
 });

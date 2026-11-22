@@ -170,3 +170,4 @@ kbd {
 .history-bars .bar.best { background: var(--good); opacity: 1; }
 .card-line { margin-top: 8px; font-size: 1.15rem; font-weight: 600; letter-spacing: 0.04em; }
 .card-line .muted { font-weight: 400; font-size: 0.85rem; letter-spacing: 0; margin-right: 6px; }
+.transport select { padding: 6px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); }
