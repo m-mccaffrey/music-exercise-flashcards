@@ -115,7 +115,7 @@
         const scale = T.SCALES[card.scale];
         $('card-title').textContent = card.root + ' ' + scale.name;
         const spelled = T.buildScale(card.root, card.scale).notes.map(T.noteName);
-        $('card-formula').textContent = scale.formula + '   ·   ' + spelled.join(' ');
+        $('card-formula').textContent = scale.formula;
         const tags = [T.PATTERNS[card.pattern].name, T.DIRECTIONS[card.direction]];
         if (card.pattern !== 'scale') tags.push('Progression: ' + T.PROGRESSIONS[card.progression]);
         if (card.pattern !== 'scale' && approach !== 'none') tags.push(approach === 'approach' ? 'With approach tones' : 'With enclosures');
