@@ -1,10 +1,9 @@
-name: Deploy to GitHub Pages
+name: Test and deploy to GitHub Pages
 
 on:
   push:
-    branches:
-      - claude/fix-notation-rendering-UzfWm
-      - main
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -13,35 +12,43 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Unit tests
+        run: node --test
+      - name: Browser smoke test
+        run: |
+          npm install --no-save playwright@1.48.2
+          npx playwright install --with-deps chromium
+          node tests/browser-smoke.js
+
   deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Build site
         run: |
           mkdir -p dist
-          cp music.html dist/index.html
-          cp music.html dist/music.html
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
+          cp -r index.html music.html css js dist/
+      - uses: actions/configure-pages@v5
         with:
           enablement: true
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
-
-      - name: Deploy to GitHub Pages
-        id: deployment
+      - id: deployment
         uses: actions/deploy-pages@v4
