@@ -301,6 +301,7 @@
         prac.targets = P.targetsFrom(state.notes, T.toMidi);
         prac.key = P.exerciseKey(state.card, prac.targets);
         prac.take = null;
+        prac.grades = null;
         const rec = currentRecord();
         prac.takeNo = rec ? rec.takes.length : 0;
         $('take-status').textContent = 'Play the first note to start a take.';
@@ -312,6 +313,7 @@
         stopPlayback();
         stopBest();
         prac.take = P.createTake(prac.targets, { ignoreOctave: $('any-octave').checked });
+        prac.grades = null;
         prac.takeNo++;
         updateTakeStatus();
         paintTake();
@@ -331,8 +333,10 @@
 
     function paintTake() {
         const t = prac.take;
+        const g = prac.grades;
         prac.targets.forEach((tg, i) => {
-            setClass(tg.index, 'hit', !!t && i < t.pos);
+            for (const k of ['good', 'ok', 'bad']) setClass(tg.index, 't-' + k, !!g && g[i] === k);
+            setClass(tg.index, 'hit', !g && !!t && i < t.pos);
             setClass(tg.index, 'next', !!t && !t.done && i === t.pos);
             setClass(tg.index, 'miss', false);
         });
@@ -371,6 +375,9 @@
             $('take-status').textContent = 'Take ' + prac.takeNo + ' done' + (out.isBest ? ' — new best!' : '.') + slips +
                 ' Play again for another take.';
             showScores(r, out.record);
+            // Colour each note by its timing error (first note is the reference).
+            prac.grades = r.errorsMs.length ? r.errorsMs.map((e, i) => (i === 0 ? 'good' : P.timingGrade(e))) : null;
+            paintTake();
         }, 600);
     }
 

@@ -175,3 +175,8 @@ kbd {
 .ma-line { position: absolute; left: 0; top: 0; pointer-events: none; overflow: visible; }
 .ma-line polyline { fill: none; stroke: var(--playing); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
 .ma-legend { color: var(--playing); font-weight: 600; }
+.notation svg .t-good path { fill: var(--good); stroke: var(--good); }
+.notation svg .t-ok path { fill: #d9a400; stroke: #d9a400; }
+.notation svg .t-bad path { fill: var(--bad); stroke: var(--bad); }
+.timing-key { font-size: 0.8rem; }
+.timing-key .k-good { color: var(--good); } .timing-key .k-ok { color: #d9a400; } .timing-key .k-bad { color: var(--bad); }

@@ -94,12 +94,15 @@ test('one hesitation only costs its own share of evenness', () => {
     assert.equal(r.hesitations, 1);
     assert.ok(r.rhythm >= 90, String(r.rhythm));
     assert.equal(r.bpm, 120);
+    assert.equal(P.timingGrade(r.errorsMs[11]), 'bad');
+    assert.equal(P.timingGrade(r.errorsMs[5]), 'good');
 });
 
-test('steady 5% jitter still scores in the 80s', () => {
+test('timing errors are judged in milliseconds', () => {
     const targets = P.targetsFrom(T.generateExercise('C', 'major', 'thirds', 'forward', 'up'), T.toMidi);
     const take = P.createTake(targets);
-    play(take, targets.map(t => t.midi), 250, i => (i % 2 ? 12 : -12));
+    play(take, targets.map(t => t.midi), 250, i => (i % 2 ? 15 : -15)); // gaps alternate 235/265 ms
     const r = P.result(take);
-    assert.ok(r.rhythm >= 80 && r.rhythm <= 92, String(r.rhythm));
+    assert.ok(r.rhythm >= 93 && r.rhythm <= 97, String(r.rhythm)); // ~15 ms off per gap
+    assert.ok(r.errorsMs.slice(1).every(e => P.timingGrade(e) === 'good'));
 });
