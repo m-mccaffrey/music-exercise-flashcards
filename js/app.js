@@ -371,7 +371,8 @@
             const out = P.addTake(currentRecord(), t, Date.now());
             saveRecord(prac.key, out.record);
             const r = out.result;
-            const slips = r.hesitations ? ' ' + r.hesitations + (r.hesitations === 1 ? ' hesitation.' : ' hesitations.') : '';
+            const slips = r.broken ? ' Timing broken (' + r.hesitations + (r.hesitations === 1 ? ' pause or rush' : ' pauses or rushes') +
+                ') — no evenness points. Keep it connected.' : '';
             $('take-status').textContent = 'Take ' + prac.takeNo + ' done' + (out.isBest ? ' — new best!' : '.') + slips +
                 ' Play again for another take.';
             showScores(r, out.record);

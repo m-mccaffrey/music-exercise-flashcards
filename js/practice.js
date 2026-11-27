@@ -59,9 +59,10 @@
     // milliseconds, with a linear falloff to 0 at 300 ms.
     // Each gap between consecutive correct notes is divided by the written length of
     // the earlier note and compared with the median gap (your own tempo, whatever it
-    // is). The error for a note is how far its gap is from the median, in ms. Every gap
-    // is scored on its own, so one hesitation only costs its share of the take.
-    // Gaps over 1.5x the median count as hesitations.
+    // is). The error for a note is how far its gap is from the median, in ms.
+    // A take must be connected: if any gap is off by more than half a gap AND by more
+    // than 130 ms (a pause, a stumble or a rush), timing is broken and evenness is 0,
+    // so a broken take can't score more than 50 overall.
     const TOLERANCE_MS = 300;
     const GOOD_MS = 60, OK_MS = 130; // per-note colours, as in the rhythm trainer
     function median(xs) {
@@ -84,9 +85,10 @@
             const err = Math.abs(g - med) * take.targets[i].ticks;
             errorsMs.push(err);
             total += Math.max(0, 1 - err / TOLERANCE_MS);
-            if (g > 1.5 * med) hesitations++;
+            if (err > OK_MS && Math.abs(g - med) > 0.5 * med) hesitations++;
         });
-        return { score: Math.round(100 * total / gaps.length), hesitations, beatMs: med * 2, errorsMs };
+        const score = hesitations ? 0 : Math.round(100 * total / gaps.length);
+        return { score, hesitations, broken: hesitations > 0, beatMs: med * 2, errorsMs };
     }
 
     function timingGrade(errMs) { return errMs < GOOD_MS ? 'good' : errMs < OK_MS ? 'ok' : 'bad'; }
@@ -104,6 +106,7 @@
             accuracy,
             rhythm: rhythm.score,
             hesitations: rhythm.hesitations,
+            broken: !!rhythm.broken,
             errorsMs: rhythm.errorsMs,
             bpm: rhythm.beatMs > 0 ? Math.round(60000 / rhythm.beatMs) : 0,
             wrong: take.wrong,

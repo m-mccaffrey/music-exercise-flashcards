@@ -86,16 +86,29 @@ test('history keeps every take and the best recording', () => {
     assert.ok(P.exerciseKey(card, targets).endsWith('60,62,64,65,67,69,71,72'));
 });
 
-test('one hesitation only costs its own share of evenness', () => {
+test('a pause breaks the take: no evenness points', () => {
     const targets = P.targetsFrom(T.generateExercise('D', 'dorian', 'triads', 'forward', 'up'), T.toMidi);
     const take = P.createTake(targets);
     play(take, targets.map(t => t.midi), 250, i => (i === 10 ? 950 : 0));
     const r = P.result(take);
+    assert.ok(r.broken);
     assert.equal(r.hesitations, 1);
-    assert.ok(r.rhythm >= 90, String(r.rhythm));
-    assert.equal(r.bpm, 120);
+    assert.equal(r.rhythm, 0);
+    assert.ok(r.score <= 50);
     assert.equal(P.timingGrade(r.errorsMs[11]), 'bad');
     assert.equal(P.timingGrade(r.errorsMs[5]), 'good');
+});
+
+test('a rush also breaks the take; small slips do not', () => {
+    const targets = P.targetsFrom(T.generateExercise('C', 'major', 'thirds', 'forward', 'up'), T.toMidi);
+    const rushed = P.createTake(targets);
+    play(rushed, targets.map(t => t.midi), 400, i => (i === 6 ? -330 : 0)); // one 70 ms gap
+    assert.ok(P.result(rushed).broken);
+    const sloppy = P.createTake(targets);
+    play(sloppy, targets.map(t => t.midi), 250, i => (i === 6 ? 100 : 0)); // 100 ms late: yellow/red but connected
+    const r = P.result(sloppy);
+    assert.equal(r.broken, false);
+    assert.ok(r.rhythm > 80, String(r.rhythm));
 });
 
 test('timing errors are judged in milliseconds', () => {
