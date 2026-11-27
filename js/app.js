@@ -371,13 +371,11 @@
             const out = P.addTake(currentRecord(), t, Date.now());
             saveRecord(prac.key, out.record);
             const r = out.result;
-            const slips = r.broken ? ' Timing broken (' + r.hesitations + (r.hesitations === 1 ? ' pause or rush' : ' pauses or rushes') +
-                ') — no evenness points. Keep it connected.' : '';
-            $('take-status').textContent = 'Take ' + prac.takeNo + ' done' + (out.isBest ? ' — new best!' : '.') + slips +
+            $('take-status').textContent = 'Take ' + prac.takeNo + ' done' + (out.isBest ? ' — new best!' : '.') +
                 ' Play again for another take.';
             showScores(r, out.record);
             // Colour each note by its timing error (first note is the reference).
-            prac.grades = r.errorsMs.length ? r.errorsMs.map((e, i) => (i === 0 ? 'good' : P.timingGrade(e))) : null;
+            prac.grades = r.errorsMs.length ? r.errorsMs.map(e => P.timingGrade(e)) : null;
             paintTake();
         }, 600);
     }

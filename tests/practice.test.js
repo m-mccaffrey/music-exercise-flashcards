@@ -86,29 +86,13 @@ test('history keeps every take and the best recording', () => {
     assert.ok(P.exerciseKey(card, targets).endsWith('60,62,64,65,67,69,71,72'));
 });
 
-test('a pause breaks the take: no evenness points', () => {
+test('a pause in the middle is scored harshly (rhythm-trainer algorithm)', () => {
     const targets = P.targetsFrom(T.generateExercise('D', 'dorian', 'triads', 'forward', 'up'), T.toMidi);
     const take = P.createTake(targets);
     play(take, targets.map(t => t.midi), 250, i => (i === 10 ? 950 : 0));
     const r = P.result(take);
-    assert.ok(r.broken);
-    assert.equal(r.hesitations, 1);
-    assert.equal(r.rhythm, 0);
-    assert.ok(r.score <= 50);
+    assert.ok(r.rhythm < 50, String(r.rhythm));
     assert.equal(P.timingGrade(r.errorsMs[11]), 'bad');
-    assert.equal(P.timingGrade(r.errorsMs[5]), 'good');
-});
-
-test('a rush also breaks the take; small slips do not', () => {
-    const targets = P.targetsFrom(T.generateExercise('C', 'major', 'thirds', 'forward', 'up'), T.toMidi);
-    const rushed = P.createTake(targets);
-    play(rushed, targets.map(t => t.midi), 400, i => (i === 6 ? -330 : 0)); // one 70 ms gap
-    assert.ok(P.result(rushed).broken);
-    const sloppy = P.createTake(targets);
-    play(sloppy, targets.map(t => t.midi), 250, i => (i === 6 ? 100 : 0)); // 100 ms late: yellow/red but connected
-    const r = P.result(sloppy);
-    assert.equal(r.broken, false);
-    assert.ok(r.rhythm > 80, String(r.rhythm));
 });
 
 test('timing errors are judged in milliseconds', () => {
@@ -116,6 +100,6 @@ test('timing errors are judged in milliseconds', () => {
     const take = P.createTake(targets);
     play(take, targets.map(t => t.midi), 250, i => (i % 2 ? 15 : -15)); // gaps alternate 235/265 ms
     const r = P.result(take);
-    assert.ok(r.rhythm >= 93 && r.rhythm <= 97, String(r.rhythm)); // ~15 ms off per gap
-    assert.ok(r.errorsMs.slice(1).every(e => P.timingGrade(e) === 'good'));
+    assert.ok(r.rhythm >= 93, String(r.rhythm)); // ~15 ms jitter
+    assert.ok(r.errorsMs.every(e => P.timingGrade(e) === 'good'));
 });

@@ -55,40 +55,27 @@
         take.events.push({ type: 'off', midi, velocity: 0, time });
     }
 
-    // Rhythm consistency, calibrated like the rhythm trainer: errors are judged in
-    // milliseconds, with a linear falloff to 0 at 300 ms.
-    // Each gap between consecutive correct notes is divided by the written length of
-    // the earlier note and compared with the median gap (your own tempo, whatever it
-    // is). The error for a note is how far its gap is from the median, in ms.
-    // A take must be connected: if any gap is off by more than half a gap AND by more
-    // than 130 ms (a pause, a stumble or a rush), timing is broken and evenness is 0,
-    // so a broken take can't score more than 50 overall.
+    // Rhythm consistency: the same algorithm as music-rhythm-trainer.
+    // Your onsets are scaled to fit between your first and last note (so tempo doesn't
+    // matter), each note is compared with where it should fall given the written
+    // durations, and the error is converted back to ms using the take's length.
+    // Evenness = 1 - (average error / 300 ms), floored at 0. A pause or rush shifts
+    // every note around it off the line, so it is penalised heavily.
     const TOLERANCE_MS = 300;
     const GOOD_MS = 60, OK_MS = 130; // per-note colours, as in the rhythm trainer
-    function median(xs) {
-        const a = xs.slice().sort((x, y) => x - y);
-        const m = Math.floor(a.length / 2);
-        return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
-    }
 
     function rhythmScore(take) {
-        const gaps = [];
-        for (let i = 1; i < take.hits.length; i++) {
-            gaps.push((take.hits[i].time - take.hits[i - 1].time) / take.targets[i - 1].ticks);
-        }
-        if (gaps.length < 2) return { score: gaps.length ? 100 : 0, hesitations: 0, beatMs: gaps[0] || 0, errorsMs: [] };
-        const med = median(gaps);
-        let total = 0, hesitations = 0;
-        // errorsMs[i] is the timing error of correct note i (the first note has none).
-        const errorsMs = [0];
-        gaps.forEach((g, i) => {
-            const err = Math.abs(g - med) * take.targets[i].ticks;
-            errorsMs.push(err);
-            total += Math.max(0, 1 - err / TOLERANCE_MS);
-            if (err > OK_MS && Math.abs(g - med) > 0.5 * med) hesitations++;
-        });
-        const score = hesitations ? 0 : Math.round(100 * total / gaps.length);
-        return { score, hesitations, broken: hesitations > 0, beatMs: med * 2, errorsMs };
+        const hits = take.hits;
+        if (hits.length < 3) return { score: hits.length > 1 ? 100 : 0, beatMs: 0, errorsMs: hits.map(() => 0) };
+        const pos = [0];
+        for (let i = 1; i < hits.length; i++) pos.push(pos[i - 1] + take.targets[i - 1].ticks);
+        const totalTicks = pos[pos.length - 1];
+        const span = hits[hits.length - 1].time - hits[0].time;
+        if (!(span > 0)) return { score: 0, beatMs: 0, errorsMs: hits.map(() => TOLERANCE_MS) };
+        const errorsMs = hits.map((h, i) => Math.abs((h.time - hits[0].time) / span - pos[i] / totalTicks) * span);
+        const avg = errorsMs.reduce((a, b) => a + b, 0) / errorsMs.length;
+        const score = Math.round(100 * Math.max(0, 1 - avg / TOLERANCE_MS));
+        return { score, beatMs: 2 * span / totalTicks, errorsMs };
     }
 
     function timingGrade(errMs) { return errMs < GOOD_MS ? 'good' : errMs < OK_MS ? 'ok' : 'bad'; }
@@ -105,8 +92,6 @@
         return {
             accuracy,
             rhythm: rhythm.score,
-            hesitations: rhythm.hesitations,
-            broken: !!rhythm.broken,
             errorsMs: rhythm.errorsMs,
             bpm: rhythm.beatMs > 0 ? Math.round(60000 / rhythm.beatMs) : 0,
             wrong: take.wrong,
