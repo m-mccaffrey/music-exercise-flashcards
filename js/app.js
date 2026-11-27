@@ -392,6 +392,30 @@
             b.title = 'Score ' + tk.score + ' (notes ' + tk.accuracy + '%, evenness ' + tk.rhythm + '%)';
             bars.appendChild(b);
         }
+        drawMovingAverage(bars, takes.map(t => t.score));
+    }
+
+    // Trailing moving average of take scores, drawn over the bars (each bar is 10px
+    // wide with a 3px gap, so take i is centred at x = 13i + 5).
+    const MA_WINDOW = 5;
+    function drawMovingAverage(container, scores) {
+        $('ma-legend').hidden = scores.length < 2;
+        if (scores.length < 2) return;
+        const H = container.clientHeight || 80;
+        const pts = scores.map((_, i) => {
+            const win = scores.slice(Math.max(0, i - MA_WINDOW + 1), i + 1);
+            const avg = win.reduce((a, b) => a + b, 0) / win.length;
+            return (13 * i + 5) + ',' + (H - (avg / 100) * H).toFixed(1);
+        });
+        const NS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(NS, 'svg');
+        svg.setAttribute('class', 'ma-line');
+        svg.setAttribute('width', 13 * scores.length);
+        svg.setAttribute('height', H);
+        const line = document.createElementNS(NS, 'polyline');
+        line.setAttribute('points', pts.join(' '));
+        svg.appendChild(line);
+        container.appendChild(svg);
     }
 
     function playBest() {
