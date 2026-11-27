@@ -338,11 +338,11 @@
     const LEVELS = {
         easy: {
             name: 'Easy',
-            description: 'Major scales in C, G, D and F; intervals in C major.',
+            description: 'Major scales and thirds, fourths and fifths on every natural root.',
             pools: [
-                { weight: 2, keys: ['C', 'G', 'D', 'F'], scales: ['major'], patterns: ['scale'],
+                { weight: 1, keys: NATURAL_KEYS, scales: ['major'], patterns: ['scale'],
                   directions: ['forward', 'forward-backward-alt'], progressions: ['up'] },
-                { weight: 1, keys: ['C'], scales: ['major'], patterns: ['thirds', 'fourths', 'fifths'],
+                { weight: 2, keys: NATURAL_KEYS, scales: ['major'], patterns: ['thirds', 'fourths', 'fifths'],
                   directions: ['forward'], progressions: ['up'] }
             ]
         },

@@ -150,7 +150,8 @@ test('levels only draw from their allowed material', () => {
         const e = T.drawCard('easy', rng);
         assert.equal(e.scale, 'major');
         assert.ok(['scale', 'thirds', 'fourths', 'fifths'].includes(e.pattern));
-        if (e.pattern !== 'scale') assert.equal(e.root, 'C');
+        assert.ok(T.NATURAL_KEYS.includes(e.root));
+        if (e.pattern !== 'scale') { assert.equal(e.direction, 'forward'); assert.equal(e.progression, 'up'); }
         const m = T.drawCard('medium', rng);
         assert.equal(m.scale, 'major');
         assert.ok(T.NATURAL_KEYS.includes(m.root));
