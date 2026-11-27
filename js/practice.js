@@ -55,21 +55,36 @@
         take.events.push({ type: 'off', midi, velocity: 0, time });
     }
 
-    // Rhythm consistency: every gap between consecutive correct notes, divided by the
-    // written length of the earlier note, should be equal. Score from the coefficient
-    // of variation (std / mean) of those normalised gaps; tempo itself doesn't matter.
+    // Rhythm consistency. Each gap between consecutive correct notes is divided by the
+    // written length of the earlier note, then compared with the median gap (your own
+    // tempo, whatever it is). Every gap is scored on its own, so one hesitation costs
+    // only its share instead of ruining the whole take:
+    //   per-gap score = 1 - |ln(gap / median)| / 0.35, floored at 0
+    // (5% off ≈ 0.86, 10% off ≈ 0.73, 35% or more off, or a pause, = 0).
+    // Evenness is the average per-gap score. Gaps over 1.5x the median count as hesitations.
+    const TOLERANCE = 0.35;
+    function median(xs) {
+        const a = xs.slice().sort((x, y) => x - y);
+        const m = Math.floor(a.length / 2);
+        return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+    }
+
     function rhythmScore(take) {
         const gaps = [];
         for (let i = 1; i < take.hits.length; i++) {
             gaps.push((take.hits[i].time - take.hits[i - 1].time) / take.targets[i - 1].ticks);
         }
-        if (gaps.length < 2) return { score: gaps.length ? 100 : 0, cv: 0, beatMs: gaps[0] || 0 };
-        const mean = gaps.reduce((a, b) => a + b, 0) / gaps.length;
-        const sd = Math.sqrt(gaps.reduce((a, g) => a + (g - mean) * (g - mean), 0) / gaps.length);
-        const cv = mean > 0 ? sd / mean : 1;
-        // cv 0 -> 100, cv 0.3 or worse -> 0
-        const score = Math.max(0, Math.min(100, Math.round(100 * (1 - cv / 0.3))));
-        return { score, cv, beatMs: mean * 2 };
+        if (gaps.length < 2) return { score: gaps.length ? 100 : 0, hesitations: 0, beatMs: gaps[0] || 0 };
+        const med = median(gaps);
+        if (!(med > 0)) return { score: 0, hesitations: 0, beatMs: 0 };
+        let total = 0, hesitations = 0;
+        for (const g of gaps) {
+            const dev = Math.abs(Math.log(Math.max(g, 1e-6) / med));
+            total += Math.max(0, 1 - dev / TOLERANCE);
+            if (g > 1.5 * med) hesitations++;
+        }
+        const score = Math.round(100 * total / gaps.length);
+        return { score, hesitations, beatMs: med * 2 };
     }
 
     function accuracyScore(take) {
@@ -84,7 +99,7 @@
         return {
             accuracy,
             rhythm: rhythm.score,
-            cv: rhythm.cv,
+            hesitations: rhythm.hesitations,
             bpm: rhythm.beatMs > 0 ? Math.round(60000 / rhythm.beatMs) : 0,
             wrong: take.wrong,
             score: Math.round((accuracy + rhythm.score) / 2)

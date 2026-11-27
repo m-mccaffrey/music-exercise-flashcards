@@ -85,3 +85,21 @@ test('history keeps every take and the best recording', () => {
     assert.equal(P.addTake(out.record, worse, 3).isBest, false);
     assert.ok(P.exerciseKey(card, targets).endsWith('60,62,64,65,67,69,71,72'));
 });
+
+test('one hesitation only costs its own share of evenness', () => {
+    const targets = P.targetsFrom(T.generateExercise('D', 'dorian', 'triads', 'forward', 'up'), T.toMidi);
+    const take = P.createTake(targets);
+    play(take, targets.map(t => t.midi), 250, i => (i === 10 ? 950 : 0));
+    const r = P.result(take);
+    assert.equal(r.hesitations, 1);
+    assert.ok(r.rhythm >= 90, String(r.rhythm));
+    assert.equal(r.bpm, 120);
+});
+
+test('steady 5% jitter still scores in the 80s', () => {
+    const targets = P.targetsFrom(T.generateExercise('C', 'major', 'thirds', 'forward', 'up'), T.toMidi);
+    const take = P.createTake(targets);
+    play(take, targets.map(t => t.midi), 250, i => (i % 2 ? 12 : -12));
+    const r = P.result(take);
+    assert.ok(r.rhythm >= 80 && r.rhythm <= 92, String(r.rhythm));
+});

@@ -367,7 +367,8 @@
             const out = P.addTake(currentRecord(), t, Date.now());
             saveRecord(prac.key, out.record);
             const r = out.result;
-            $('take-status').textContent = 'Take ' + prac.takeNo + ' done' + (out.isBest ? ' — new best!' : '') +
+            const slips = r.hesitations ? ' ' + r.hesitations + (r.hesitations === 1 ? ' hesitation.' : ' hesitations.') : '';
+            $('take-status').textContent = 'Take ' + prac.takeNo + ' done' + (out.isBest ? ' — new best!' : '.') + slips +
                 ' Play again for another take.';
             showScores(r, out.record);
         }, 600);
