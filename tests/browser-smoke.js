@@ -18,7 +18,9 @@ const { chromium } = require('playwright');
     }
     // Fake Web MIDI device the test can play.
     await page.addInitScript(() => {
-        const input = { name: 'Test Keyboard', onmidimessage: null };
+        const listeners = [];
+        const input = { name: 'Test Keyboard', state: 'connected', addEventListener: (t, f) => listeners.push(f),
+            open: () => Promise.resolve(), onmidimessage: (e) => listeners.forEach(f => f(Object.assign({ target: input }, e))) };
         window.__midiInput = input;
         navigator.requestMIDIAccess = () => Promise.resolve({ inputs: new Map([['t', input]]), onstatechange: null });
     });

@@ -423,18 +423,55 @@
     }
 
     let midiAccess = null;
+    const listening = new WeakSet();
+    const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+    const midiLabel = (m) => NOTE_NAMES[m % 12] + (Math.floor(m / 12) - 1);
+
+    // Live monitor of what the browser receives, to diagnose devices that "connect"
+    // but whose notes don't arrive.
+    function monitor(text) { $('midi-monitor').textContent = text; }
+
     function handleMidiMessage(e) {
-        const [status, d1, d2] = e.data;
-        const cmd = status & 0xf0;
-        const time = e.timeStamp || performance.now();
-        if (cmd === 0x90 && d2 > 0) onMidiNoteOn(d1, d2, time);
-        else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) onMidiNoteOff(d1, time);
+        try {
+            const data = e.data;
+            if (!data || data.length === 0) return;
+            const status = data[0];
+            if (status >= 0xf8) return; // clock / active sensing
+            const cmd = status & 0xf0;
+            const d1 = data[1], d2 = data[2];
+            const name = e.target && e.target.name ? e.target.name : 'MIDI';
+            // Use the event's timestamp when it's on the page clock; some setups report
+            // timestamps on another clock, so fall back to arrival time.
+            const now = performance.now();
+            const time = e.timeStamp > 0 && Math.abs(e.timeStamp - now) < 10000 ? e.timeStamp : now;
+            if (cmd === 0x90 && d2 > 0) {
+                monitor('Last: ' + midiLabel(d1) + ' on (velocity ' + d2 + ', ch ' + ((status & 15) + 1) + ') from ' + name);
+                onMidiNoteOn(d1, d2, time);
+            } else if (cmd === 0x80 || (cmd === 0x90 && d2 === 0)) {
+                onMidiNoteOff(d1, time);
+            } else {
+                monitor('Last: non-note message ' + Array.from(data.slice(0, 3)).map(x => x.toString(16)).join(' ') + ' from ' + name);
+            }
+        } catch (err) {
+            monitor('Error handling MIDI: ' + (err && err.message ? err.message : err));
+            console.error(err);
+        }
     }
+
     function refreshMidiInputs() {
         const names = [];
-        midiAccess.inputs.forEach(input => { input.onmidimessage = handleMidiMessage; names.push(input.name); });
+        midiAccess.inputs.forEach(input => {
+            if (input.state === 'disconnected') return;
+            if (!listening.has(input)) {
+                listening.add(input);
+                input.addEventListener('midimessage', handleMidiMessage);
+                if (input.open) input.open().catch(() => {});
+            }
+            names.push(input.name);
+        });
         $('midi-status').textContent = names.length ? 'Listening to: ' + names.join(', ') : 'No MIDI input found. Plug one in.';
         $('midi-enable').hidden = names.length > 0;
+        if (names.length && !$('midi-monitor').textContent) monitor('Waiting for notes… press a key.');
     }
     function enableMidi(fromUser) {
         if (!navigator.requestMIDIAccess) {
